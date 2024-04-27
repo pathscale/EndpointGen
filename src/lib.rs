@@ -19,17 +19,6 @@ pub struct Data {
     pub pg_funcs: Vec<ProceduralFunction>,
 }
 pub fn main(data: Data) -> Result<()> {
-    let mut root = env::current_dir()?;
-    loop {
-        if root.join(".cargo").exists() {
-            break;
-        }
-        root = root.parent().unwrap().to_owned();
-    }
-    let root = root.to_str().unwrap();
-    let dir = format!("{}/build", root);
-    create_dir_all(&dir)?;
-
     docs::gen_services_docs(&data)?;
     docs::gen_md_docs(&data)?;
     rust::gen_model_rs(&data)?;
