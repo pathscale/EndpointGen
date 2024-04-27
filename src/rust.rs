@@ -398,7 +398,7 @@ pub fn dump_endpoint_schema(data: &Data, mut writer: impl Write) -> eyre::Result
     let code = format!(
         r#"
     impl EnumEndpoint {{
-        pub fn schema(&self) -> ::codegen::model::EndpointSchema {{
+        pub fn schema(&self) -> ::endpoint_gen::model::EndpointSchema {{
             let schema = match self {{
                 {cases}
             }};
