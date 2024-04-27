@@ -57,7 +57,9 @@ impl ToRust for Type {
                     let serde_with_opt = match &x.ty {
                         Type::BlockchainDecimal => "rust_decimal::serde::str",
                         Type::BlockchainAddress if serde_with => "WithBlockchainAddress",
-                        Type::BlockchainTransactionHash if serde_with => "WithBlockchainTransactionHash",
+                        Type::BlockchainTransactionHash if serde_with => {
+                            "WithBlockchainTransactionHash"
+                        }
                         // TODO: handle optional decimals
                         // Type::Optional(t) if matches!(**t, Type::BlockchainDecimal) => {
                         //     "WithBlockchainDecimal"
@@ -84,7 +86,10 @@ impl ToRust for Type {
                 });
                 format!("pub struct {} {{{}}}", name, fields.join(","))
             }
-            Type::Enum { name, variants: fields } => {
+            Type::Enum {
+                name,
+                variants: fields,
+            } => {
                 let mut fields = fields.iter().map(|x| {
                     format!(
                         r#"
@@ -122,11 +127,15 @@ pub fn get_parameter_type(this: &ProceduralFunction) -> Type {
 }
 
 pub fn pg_func_to_rust_trait_impl(this: &ProceduralFunction) -> String {
-    let mut arguments = this
-        .parameters
-        .iter()
-        .enumerate()
-        .map(|(i, x)| format!("{}{} => ${}::{}", PARAM_PREFIX, x.name, i + 1, x.ty.to_sql()));
+    let mut arguments = this.parameters.iter().enumerate().map(|(i, x)| {
+        format!(
+            "{}{} => ${}::{}",
+            PARAM_PREFIX,
+            x.name,
+            i + 1,
+            x.ty.to_sql()
+        )
+    });
     let sql = format!("SELECT * FROM api.{}({});", this.name, arguments.join(", "));
     let pg_params = this
         .parameters
@@ -227,7 +236,9 @@ pub fn collect_rust_recursive_types(t: Type) -> Vec<Type> {
             }
             v
         }
-        Type::DataTable { name, fields } => collect_rust_recursive_types(Type::struct_(name, fields)),
+        Type::DataTable { name, fields } => {
+            collect_rust_recursive_types(Type::struct_(name, fields))
+        }
         Type::Vec(x) => collect_rust_recursive_types(*x),
         Type::Optional(x) => collect_rust_recursive_types(*x),
         _ => vec![],
