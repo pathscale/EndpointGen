@@ -1,10 +1,11 @@
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [package]
-name = "codegen"
+name = "endpoint-gen"
 version = "0.1.0"
 edition = "2021"
-
+repository = "https://github.com/pathscale/EndpointGen/"
+description = "Generate Rust code for websocket API endpoints"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
