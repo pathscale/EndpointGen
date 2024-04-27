@@ -1,15 +1,14 @@
+use std::path::PathBuf;
+
+use eyre::*;
+
+use crate::model::{ProceduralFunction, Service, Type};
+
 pub mod docs;
 pub mod model;
 pub mod rust;
 pub mod service;
 pub mod sql;
-
-use eyre::*;
-
-use crate::model::{ProceduralFunction, Service, Type};
-use std::env;
-use std::fs::create_dir_all;
-use std::path::PathBuf;
 
 pub struct Data {
     pub project_root: PathBuf,
