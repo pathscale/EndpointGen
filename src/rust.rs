@@ -306,9 +306,9 @@ pub fn gen_model_rs(data: &Data) -> eyre::Result<()> {
     writeln!(
         &mut f,
         r#"
-impl Into<ErrorCode> for EnumErrorCode {{
-    fn into(self) -> ErrorCode {{
-        ErrorCode::new(self as _)
+impl From<EnumErrorCode> for ErrorCode {{
+    fn from(e: EnumErrorCode) -> Self {{
+        ErrorCode::from(e as _)
     }}
 }}
     "#
