@@ -308,7 +308,7 @@ pub fn gen_model_rs(data: &Data) -> eyre::Result<()> {
         r#"
 impl From<EnumErrorCode> for ErrorCode {{
     fn from(e: EnumErrorCode) -> Self {{
-        ErrorCode::from(e as _)
+        ErrorCode::new(e as _)
     }}
 }}
     "#
