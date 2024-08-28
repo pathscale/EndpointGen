@@ -20,8 +20,13 @@ impl ToSql for Type {
             Type::TimeStampMs => "bigint".to_owned(),
             Type::Numeric => "double precision".to_owned(),
             Type::Struct { fields, .. } => {
-                let fields = fields.iter().map(|x| format!("\"{}\" {}", x.name, x.ty.to_sql()));
-                format!("table (\n{}\n)", fields.map(|x| format!("    {}", x)).join(",\n"))
+                let fields = fields
+                    .iter()
+                    .map(|x| format!("\"{}\" {}", x.name, x.ty.to_sql()));
+                format!(
+                    "table (\n{}\n)",
+                    fields.map(|x| format!("    {}", x)).join(",\n")
+                )
             }
             Type::StructRef(_name) => "jsonb".to_owned(),
             Type::Object => "jsonb".to_owned(),
@@ -108,7 +113,13 @@ pub fn gen_db_sql(data: &Data) -> eyre::Result<()> {
 }
 
 pub fn gen_model_sql(data: &Data) -> eyre::Result<()> {
-    let db_filename = data.project_root.join("db/model.sql");
+    let db_filename = data.project_root.join("db").join("model.sql");
+
+    // Ensure the parent directories exist
+    if let Some(parent) = db_filename.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
     let mut f = File::create(db_filename)?;
 
     for e in &data.enums {
