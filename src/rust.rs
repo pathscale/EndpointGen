@@ -247,6 +247,12 @@ pub fn collect_rust_recursive_types(t: Type) -> Vec<Type> {
 
 pub fn gen_model_rs(data: &Data) -> eyre::Result<()> {
     let db_filename = data.output_dir.join("model.rs");
+
+    // Ensure the parent directories exist
+    if let Some(parent) = db_filename.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
     let mut f = File::create(&db_filename)?;
     write!(
         &mut f,
