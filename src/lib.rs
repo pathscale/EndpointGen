@@ -5,6 +5,7 @@ use eyre::*;
 use crate::model::{ProceduralFunction, Service, Type};
 
 pub mod docs;
+pub mod libs;
 pub mod model;
 pub mod rust;
 pub mod service;
