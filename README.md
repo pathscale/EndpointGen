@@ -54,15 +54,16 @@ fn main() -> eyre::Result<()> {
     println!("cargo:rerun-if-changed=../docs/error_codes/error_codes.json");
 
     // Set these up to match your environment
-    let root = env::current_dir()?; // This should evaluate to the root of your project where the project Cargo.toml can be found
-    let output_dir = env::current_dir()?; // This should evaluate to the `<root>/gen/` dir
+    let current_dir = env::current_dir()?;
+    let root = current_dir.parent().unwrap(); // This should evaluate to the root of your project where the project Cargo.toml can be found
+    let output_dir = &current_dir.join("generated"); // This should evaluate to the `<root>/gen/generated/` dir
 
     let data = Data {
         project_root: PathBuf::from(&root),
         output_dir: PathBuf::from(root),
-        services: <TODO>,
-        enums: <TODO>,
-        pg_funcs: <TODO>,
+        services: gen_src::services::get_services(),
+        enums: gen_src::enums::get_enums(),
+        pg_funcs: gen_src::proc_funcs::get_proc_functions(),
     };
 
     endpoint_gen::main(data)?;
@@ -87,13 +88,18 @@ gen = { path = "./gen" }
 
 ## Adding generation sources
 
-Add the following as submodules to `/gen/src/` with the `module_name.rs`, `/src/module_name/` pattern
+Add `gen_src` as a module to the `gen` project:
 
-- `services`
-- `enums`
-- `proc_funcs`
+- Add `gen_src.rs` at the same level as `build.rs`
+- Add the `gen_src` directory at the same level
 
-Declare the modules in `/gen/src/lib.rs`:
+Add the following as submodules to `/gen/gen_src/`
+
+- `services.rs`
+- `enums.rs`
+- `proc_funcs.rs`
+
+Declare the modules in `/gen/gen_src.rs`:
 
 ```rust
 pub mod enums;
@@ -101,23 +107,22 @@ pub mod proc_funcs;
 pub mod services;
 ```
 
-    Your directory structure should now look like the following:
+Your directory structure should now look like the following:
 
-    ```text
-    project_root/
-    ├─ gen/
-    │  ├─ src/
-    │  │  ├─ services/
-    │  │  ├─ enums/
-    │  │  ├─ proc_funcs/
-    │  │  ├─ services.rs
-    │  │  ├─ enums.rs
-    │  │  ├─ proc_funcs.rs
-    │  │  ├─ lib.rs
-    │  ├─ Cargo.toml
-    │  ├─ build.rs
-    Cargo.toml
-    ```
+```text
+project_root/
+├─ gen/
+│  ├─ gen_src/
+│  │  ├─ enums.rs
+│  │  ├─ proc_funcs.rs
+│  │  ├─ services.rs
+│  ├─ src/
+│  │  ├─ lib.rs
+│  ├─ build.rs
+│  ├─ Cargo.toml
+│  ├─ gen_src.rs
+Cargo.toml
+```
 
 ### Adding Services
 
