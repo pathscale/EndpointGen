@@ -1,4 +1,8 @@
 # EndpointGen
+[![Crates.io](https://img.shields.io/crates/v/endpoint-gen.svg)](https://crates.io/crates/endpoint-gen)
+[![dependency status](https://deps.rs/crate/endpoint-gen/0.1.3/status.svg)](https://deps.rs/crate/endpoint-gen/0.1.3)
+
+
 
 A highly opinionated template engine to help generate endpoints and related pieces for Rust projects
 
