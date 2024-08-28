@@ -30,6 +30,8 @@ Upon next generation, inspect the `error_codes.md` file, as well as the generate
 
 ## Setup and Getting Started
 
+Note: The directory and module structures proposed below are purely for demonstration purposes and can be changed as required according to the project EndpointGen is added to. This is a good default to follow though.
+
 1. In a terminal navigated to the root of your project, run: `cargo new --lib --vcs none gen`
 2. Add the following to the `gen` crate's `Cargo.toml`:
 
