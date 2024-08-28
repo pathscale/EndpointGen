@@ -221,6 +221,8 @@ A service has:
 Add the following to `services.rs`:
 
 ```rust
+use endpoint_gen::model::{EndpointSchema, Field, Service, Type};
+
 pub fn get_services() -> Vec<Service> {
     vec![
         Service::new("service_1", 1, get_service_endpoints()),
@@ -276,18 +278,19 @@ An enum (which is a variant of the actual Rust enum, `Type`, defined in `endpoin
 Add the following to the `get_enums` function in `enums.rs`:
 
 ```rust
+use endpoint_gen::model::{EnumVariant, Type};
+
 pub fn get_enums() -> Vec<Type> {
-    vec![
-        Type::enum_(
-            "role".to_owned(),
-            vec![
-                EnumVariant::new("guest", 0),
-                EnumVariant::new("user", 1),
-                EnumVariant::new("admin", 2),
-                EnumVariant::new("developer", 3),
-            ],
-        )
-        ]
+    vec![Type::enum_(
+        "role".to_owned(),
+        vec![
+            EnumVariant::new("guest", 0),
+            EnumVariant::new("user", 1),
+            EnumVariant::new("admin", 2),
+            EnumVariant::new("developer", 3),
+        ],
+    )]
+}
 ```
 
 As can be seen, an `EnumVariant` just consists of a name and an ordinal
@@ -304,6 +307,8 @@ A procedural function bundles and wraps an actual database query (currently SQL 
 Add the following to `get_proc_functions` and `proc_funcs.rs`:
 
 ```rust
+use endpoint_gen::model::{Field, ProceduralFunction, Type};
+
 pub fn get_proc_functions() -> Vec<ProceduralFunction> {
     vec![
         get_example_func(),
@@ -314,6 +319,7 @@ pub fn get_proc_functions() -> Vec<ProceduralFunction> {
 fn get_example_func() -> Vec<ProceduralFunction> {
 
 }
+```
 
 #### Defining a procedural function
 
@@ -322,24 +328,24 @@ Add the following to `get_example_func`:
 ```rust
 // TODO: Add simpler 'mock' proc func that contains the bare minimum to show how it works
 fn get_example_func() -> Vec<ProceduralFunction> {
-    vec![
-        ProceduralFunction::new(
-            "fun_user_add_event",  // Proc func name
-            vec![                   // Proc func input params
-                Field::new("kind", Type::Int),
-                Field::new("chain_id", Type::Int),
-                Field::new("block_id", Type::BigInt),
-                Field::new("block_time", Type::BigInt),
-                Field::new("transaction_hash", Type::BlockchainTransactionHash),
-                Field::new("from_address", Type::BlockchainAddress),
-                Field::new("contract_address", Type::BlockchainAddress),
-                Field::new("severity", Type::Int),
-                Field::new("detail", Type::Object), // JSON object
-                Field::new("signals", Type::Object),
-            ],
-            vec![Field::new("success", Type::Boolean)],  // Proc func returns
-            // Raw sql
-            r#"
+    vec![ProceduralFunction::new(
+        "fun_user_add_event", // Proc func name
+        vec![
+            // Proc func input params
+            Field::new("kind", Type::Int),
+            Field::new("chain_id", Type::Int),
+            Field::new("block_id", Type::BigInt),
+            Field::new("block_time", Type::BigInt),
+            Field::new("transaction_hash", Type::BlockchainTransactionHash),
+            Field::new("from_address", Type::BlockchainAddress),
+            Field::new("contract_address", Type::BlockchainAddress),
+            Field::new("severity", Type::Int),
+            Field::new("detail", Type::Object), // JSON object
+            Field::new("signals", Type::Object),
+        ],
+        vec![Field::new("success", Type::Boolean)], // Proc func returns
+        // Raw sql
+        r#"
         BEGIN
             -- delete same kind of event for the same address
             DELETE FROM tbl.event WHERE from_address = a_from_address AND kind = a_kind;
@@ -347,7 +353,6 @@ fn get_example_func() -> Vec<ProceduralFunction> {
             VALUES (a_kind, a_chain_id, a_block_id, a_block_time, a_transaction_hash, a_from_address, a_contract_address, a_severity, a_detail, a_signals);
         END
         "#,
-        )
-        ]
+    )]
 }
 ```
