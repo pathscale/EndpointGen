@@ -1,0 +1,15 @@
+[package]
+name = "minimal_project"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+[workspace]
+members = [
+  "gen",
+]
+
+[workspace.dependencies]
+## Internal dependencies
+gen = { path = "./gen" }
