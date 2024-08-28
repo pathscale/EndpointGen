@@ -1,0 +1,11 @@
+[package]
+name = "gen"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+endpoint-gen = "*" 
+
+[build-dependencies]
+endpoint-gen = "*"
+eyre = "*"
