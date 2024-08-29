@@ -28,9 +28,7 @@ pub mod WithBlockchainAddress {
         D: Deserializer<'de>,
     {
         let value = String::deserialize(deserializer)?;
-        let value = Address::from_str(&value)
-            .ok()
-            .ok_or_else(|| D::Error::invalid_value(serde::de::Unexpected::Str(&value), &"a valid address"))?;
+        let value = Address::from_slice(value.to_string().as_bytes());
         Ok(value)
     }
 }
@@ -48,9 +46,7 @@ impl<'de> Deserialize<'de> for BlockchainAddress {
         D: Deserializer<'de>,
     {
         let value = String::deserialize(deserializer)?;
-        let value = Address::from_str(&value)
-            .ok()
-            .ok_or_else(|| D::Error::invalid_value(serde::de::Unexpected::Str(&value), &"a valid address"))?;
+        let value = Address::from_slice(value.to_string().as_bytes());
         Ok(BlockchainAddress(value))
     }
 }
@@ -86,6 +82,8 @@ impl Debug for BlockchainTransactionHash {
 }
 #[allow(non_snake_case)]
 pub mod WithBlockchainTransactionHash {
+    use std::str::FromStr;
+
     use super::*;
 
     pub fn serialize<S>(this: &H256, serializer: S) -> Result<S::Ok, S::Error>
@@ -99,10 +97,10 @@ pub mod WithBlockchainTransactionHash {
         D: Deserializer<'de>,
     {
         let value = String::deserialize(deserializer)?;
-        let value = H256::from_str(&value)
-            .ok()
-            .ok_or_else(|| D::Error::invalid_value(serde::de::Unexpected::Str(&value), &"a valid hash"))?;
-        Ok(value)
+
+        let h256_value = H256::from_str(&value).map_err(|e| D::Error::custom(e.to_string()))?;        
+        
+        Ok(h256_value)
     }
 }
 impl Serialize for BlockchainTransactionHash {
@@ -119,10 +117,10 @@ impl<'de> Deserialize<'de> for BlockchainTransactionHash {
         D: Deserializer<'de>,
     {
         let value = String::deserialize(deserializer)?;
-        let value = H256::from_str(&value)
-            .ok()
-            .ok_or_else(|| D::Error::invalid_value(serde::de::Unexpected::Str(&value), &"a valid hash"))?;
-        Ok(BlockchainTransactionHash(value))
+
+        let h256_value = H256::from_slice(value.as_bytes());
+
+        Ok(BlockchainTransactionHash(h256_value))
     }
 }
 
