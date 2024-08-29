@@ -1,16 +1,15 @@
-use crate::error_code::ErrorCode;
-use crate::handler::RequestHandlerErased;
-use crate::log::LogLevel;
-use crate::toolbox::RequestContext;
-use codegen::model::EndpointSchema;
-use eyre::*;
 use serde::*;
 use serde_json::Value;
 use std::fmt::Debug;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicI64, AtomicU32};
 use std::sync::Arc;
-use tracing::*;
+
+use crate::libs::error_code::ErrorCode;
+use crate::libs::handler::RequestHandlerErased;
+use crate::libs::log::LogLevel;
+use crate::libs::toolbox::RequestContext;
+use crate::model::EndpointSchema;
 
 pub type ConnectionId = u32;
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
@@ -93,11 +92,7 @@ pub struct WsEndpoint {
     pub handler: Arc<dyn RequestHandlerErased>,
 }
 
-pub fn internal_error_to_resp(
-    ctx: &RequestContext,
-    code: ErrorCode,
-    err0: Error,
-) -> WsResponseValue {
+pub fn internal_error_to_resp(ctx: &RequestContext, code: ErrorCode, err0: eyre::Error) -> WsResponseValue {
     let log_id = ctx.log_id.to_string();
     let err = WsResponseError {
         method: ctx.method,
@@ -106,15 +101,11 @@ pub fn internal_error_to_resp(
         log_id,
         params: Value::Null,
     };
-    error!("Internal error: {:?} {:?}", err, err0);
+    tracing::error!("Internal error: {:?} {:?}", err, err0);
     WsResponseValue::Error(err)
 }
 
-pub fn request_error_to_resp(
-    ctx: &RequestContext,
-    code: ErrorCode,
-    params: impl Into<Value>,
-) -> WsResponseValue {
+pub fn request_error_to_resp(ctx: &RequestContext, code: ErrorCode, params: impl Into<Value>) -> WsResponseValue {
     let log_id = ctx.log_id.to_string();
     let params = params.into();
     let err = WsResponseError {
@@ -124,6 +115,6 @@ pub fn request_error_to_resp(
         log_id,
         params,
     };
-    warn!("Request error: {:?}", err);
+    tracing::warn!("Request error: {:?}", err);
     WsResponseValue::Error(err)
 }

@@ -3,7 +3,6 @@ use crate::service::get_systemd_service;
 use crate::Data;
 use eyre::Context;
 use itertools::Itertools;
-use serde::de::value::Error;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fs::{create_dir_all, File};

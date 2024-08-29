@@ -1,16 +1,16 @@
-use crate::error_code::ErrorCode;
-use crate::toolbox::RequestContext;
-use crate::ws::{request_error_to_resp, WebsocketServer, WsConnection, WsRequestValue};
-use eyre::*;
+use eyre::Result;
 use futures::StreamExt;
 use futures::{Sink, SinkExt, Stream};
 use serde_json::Value;
-use std::result::Result::Ok;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message;
 use tracing::*;
 
+use crate::libs::error_code::ErrorCode;
+use crate::libs::toolbox::{RequestContext, TOOLBOX};
+
+use super::{request_error_to_resp, WebsocketServer, WsConnection, WsRequestValue};
 pub struct WsClientSession<WS> {
     conn_info: Arc<WsConnection>,
     conn: WS,
@@ -119,11 +119,13 @@ impl<
                 return Ok(true);
             }
         };
-        tokio::spawn(
-            handler
-                .handler
-                .handle(&self.server.toolbox, context, req.params),
-        );
+        let handler = handler.handler.clone();
+        let toolbox = self.server.toolbox.clone();
+        tokio::task::spawn_local(async move {
+            TOOLBOX
+                .scope(toolbox.clone(), handler.handle(&toolbox, context, req.params))
+                .await;
+        });
 
         Ok(true)
     }
@@ -135,6 +137,9 @@ impl<
                     // info!(?conn_id, ?msg, "Received message to send");
                     if let Some(msg) = msg {
                         self.send_message(msg).await?;
+                        if self.server.config.header_only {
+                            break;
+                        }
                     } else {
                         info!(?conn_id, "Receive side terminated");
                         break;

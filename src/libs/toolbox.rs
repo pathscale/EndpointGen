@@ -1,14 +1,18 @@
 use dashmap::DashMap;
-use eyre::*;
+use eyre::{Context, Result};
+use parking_lot::RwLock;
 use serde::*;
 use serde_json::Value;
 use std::fmt::{Debug, Display, Formatter};
-use std::net::IpAddr;
-use std::result::Result::Ok;
+use std::net::{IpAddr, Ipv4Addr};
 use std::sync::atomic::Ordering;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use tokio_tungstenite::tungstenite::Message;
 use tracing::*;
+
+use super::error_code::ErrorCode;
+use super::log::LogLevel;
+use super::ws::{internal_error_to_resp, request_error_to_resp, ConnectionId, WsConnection, WsLogResponse, WsResponseValue, WsStreamState, WsSuccessResponse};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct NoResponseError;
@@ -67,6 +71,17 @@ pub struct RequestContext {
     pub ip_addr: IpAddr,
 }
 impl RequestContext {
+    pub fn empty() -> Self {
+        Self {
+            connection_id: 0,
+            user_id: 0,
+            seq: 0,
+            method: 0,
+            log_id: 0,
+            role: 0,
+            ip_addr: IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
+        }
+    }
     pub fn from_conn(conn: &WsConnection) -> Self {
         Self {
             connection_id: conn.connection_id,
@@ -79,7 +94,6 @@ impl RequestContext {
         }
     }
 }
-// TODO: make it shared and cloneable
 
 pub struct Toolbox {
     pub send_msg: RwLock<Arc<dyn Fn(ConnectionId, WsResponseValue) -> bool + Send + Sync>>,
@@ -92,12 +106,8 @@ impl Toolbox {
         })
     }
 
-    pub fn set_ws_states(
-        &self,
-        states: Arc<DashMap<ConnectionId, Arc<WsStreamState>>>,
-        oneshot: bool,
-    ) {
-        *self.send_msg.write().unwrap() = Arc::new(move |conn_id, msg| {
+    pub fn set_ws_states(&self, states: Arc<DashMap<ConnectionId, Arc<WsStreamState>>>, oneshot: bool) {
+        *self.send_msg.write() = Arc::new(move |conn_id, msg| {
             let state = if let Some(state) = states.get(&conn_id) {
                 state
             } else {
@@ -108,11 +118,7 @@ impl Toolbox {
         });
     }
 
-    pub fn send_ws_msg(
-        sender: &tokio::sync::mpsc::Sender<Message>,
-        resp: WsResponseValue,
-        oneshot: bool,
-    ) {
+    pub fn send_ws_msg(sender: &tokio::sync::mpsc::Sender<Message>, resp: WsResponseValue, oneshot: bool) {
         let resp = serde_json::to_string(&resp).unwrap();
         if let Err(err) = sender.try_send(resp.into()) {
             warn!("Failed to send websocket message: {:?}", err)
@@ -122,7 +128,7 @@ impl Toolbox {
         }
     }
     pub fn send(&self, conn_id: ConnectionId, resp: WsResponseValue) -> bool {
-        (self.send_msg.read().unwrap())(conn_id, resp)
+        self.send_msg.read()(conn_id, resp)
     }
     pub fn send_response(&self, ctx: &RequestContext, resp: impl Serialize) {
         self.send(
@@ -134,7 +140,7 @@ impl Toolbox {
             }),
         );
     }
-    pub fn send_internal_error(&self, ctx: &RequestContext, code: ErrorCode, err: Error) {
+    pub fn send_internal_error(&self, ctx: &RequestContext, code: ErrorCode, err: eyre::Error) {
         self.send(ctx.connection_id, internal_error_to_resp(ctx, code, err));
     }
     pub fn send_request_error(&self, ctx: &RequestContext, code: ErrorCode, err: impl Into<Value>) {
@@ -151,10 +157,7 @@ impl Toolbox {
             }),
         );
     }
-    pub fn encode_ws_response<Resp: Serialize>(
-        ctx: RequestContext,
-        resp: Result<Resp>,
-    ) -> Option<WsResponseValue> {
+    pub fn encode_ws_response<Resp: Serialize>(ctx: RequestContext, resp: Result<Resp>) -> Option<WsResponseValue> {
         #[allow(unused_variables)]
         let RequestContext {
             connection_id,
@@ -174,28 +177,6 @@ impl Toolbox {
                 return None;
             }
 
-            Err(err0) if err0.is::<tokio_postgres::Error>() => {
-                error!("Database error: {:?}", err0);
-
-                let err = err0.downcast_ref::<tokio_postgres::Error>().unwrap();
-                if let Some(code) = err.code() {
-                    if let Ok(err) = CustomError::from_sql_error(code.code(), &err0) {
-                        request_error_to_resp(&ctx, err.code, err.params)
-                    } else {
-                        internal_error_to_resp(
-                            &ctx,
-                            ErrorCode::new(100601), // Database Error,
-                            err0,
-                        )
-                    }
-                } else {
-                    internal_error_to_resp(
-                        &ctx,
-                        ErrorCode::new(100601), // Database Error,
-                        err0,
-                    )
-                }
-            }
             Err(err) if err.is::<CustomError>() => {
                 error!("CustomError: {:?}", err);
                 let err = err.downcast::<CustomError>().unwrap();
@@ -209,4 +190,7 @@ impl Toolbox {
         };
         Some(resp)
     }
+}
+tokio::task_local! {
+    pub static TOOLBOX: ArcToolbox;
 }

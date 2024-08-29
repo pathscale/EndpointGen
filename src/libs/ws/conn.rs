@@ -1,18 +1,18 @@
 use dashmap::DashMap;
 use std::sync::Arc;
 
-use crate::ws::basics::WsConnection;
-use crate::ws::ConnectionId;
 use tokio_tungstenite::tungstenite::Message;
 
+use super::{ConnectionId, WsConnection};
+
+#[derive(Default)]
 pub struct WebsocketStates {
     states: Arc<DashMap<ConnectionId, Arc<WsStreamState>>>,
 }
+
 impl WebsocketStates {
     pub fn new() -> Self {
-        Self {
-            states: Default::default(),
-        }
+        WebsocketStates::default()
     }
     pub fn remove(&self, connection_id: u32) {
         self.states.remove(&connection_id);
@@ -30,13 +30,8 @@ impl WebsocketStates {
         message_queue: tokio::sync::mpsc::Sender<Message>,
         conn: Arc<WsConnection>,
     ) {
-        self.states.insert(
-            connection_id,
-            Arc::new(WsStreamState {
-                conn,
-                message_queue,
-            }),
-        );
+        self.states
+            .insert(connection_id, Arc::new(WsStreamState { conn, message_queue }));
     }
 }
 

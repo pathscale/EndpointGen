@@ -1,3 +1,4 @@
+
 use deadpool_postgres::*;
 use eyre::*;
 use postgres_from_row::FromRow;
@@ -12,9 +13,10 @@ pub use tokio_postgres::types::ToSql;
 pub use tokio_postgres::{NoTls, Row, ToStatement};
 mod data_thread;
 mod pooled;
-use crate::datatable::RDataTable;
 pub use data_thread::*;
 pub use pooled::*;
+
+use super::datatable::RDataTable;
 
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct DatabaseConfig {

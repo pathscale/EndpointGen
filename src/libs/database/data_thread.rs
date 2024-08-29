@@ -1,12 +1,13 @@
-use crate::database::pooled::PooledDbClient;
-use crate::database::DatabaseRequest;
-use crate::datatable::RDataTable;
 use eyre::*;
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use postgres_from_row::FromRow;
 use std::any::Any;
 use std::fmt::Debug;
+
+use crate::libs::datatable::RDataTable;
+
+use super::{DatabaseRequest, PooledDbClient};
 
 type DbExecutionRequestType =
     Box<dyn FnOnce(&PooledDbClient) -> BoxFuture<Box<dyn Any + Sync + Send>> + Send>;
