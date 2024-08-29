@@ -1,18 +1,23 @@
-use crate::log::LogLevel;
-use crate::ws::{WsLogResponse, WsRequestGeneric, WsResponseGeneric, WsResponseValue};
-use eyre::*;
+use eyre::{bail, eyre, Context, Result};
 use futures::SinkExt;
 use futures::StreamExt;
+use reqwest::header::HeaderValue;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use tokio::net::TcpStream;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
-use tokio_tungstenite::tungstenite::http::HeaderValue;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::MaybeTlsStream;
 use tokio_tungstenite::WebSocketStream;
 use tracing::*;
+
+use crate::libs::log::LogLevel;
+use crate::libs::ws::WsLogResponse;
+use crate::libs::ws::WsRequestGeneric;
+use crate::libs::ws::WsResponseGeneric;
+
+use super::WsResponseValue;
 
 pub trait WsRequest: Serialize + DeserializeOwned + Send + Sync + Clone {
     type Response: WsResponse;
@@ -32,9 +37,7 @@ impl WsClient {
         req.headers_mut()
             .insert("Sec-WebSocket-Protocol", HeaderValue::from_str(header)?);
 
-        let (ws_stream, _) = connect_async(req)
-            .await
-            .context("Failed to connect to endpoint")?;
+        let (ws_stream, _) = connect_async(req).await.context("Failed to connect to endpoint")?;
         Ok(Self {
             stream: ws_stream,
             seq: 0,
@@ -52,21 +55,13 @@ impl WsClient {
         Ok(())
     }
     pub async fn recv_raw(&mut self) -> Result<WsResponseValue> {
-        let msg = self
-            .stream
-            .next()
-            .await
-            .ok_or(eyre!("Connection closed"))??;
+        let msg = self.stream.next().await.ok_or(eyre!("Connection closed"))??;
         let resp: WsResponseValue = serde_json::from_str(&msg.to_string())?;
         Ok(resp)
     }
     pub async fn recv_resp<T: DeserializeOwned>(&mut self) -> Result<T> {
         loop {
-            let msg = self
-                .stream
-                .next()
-                .await
-                .ok_or(eyre!("Connection closed"))??;
+            let msg = self.stream.next().await.ok_or(eyre!("Connection closed"))??;
             match msg {
                 Message::Text(text) => {
                     debug!("recv resp: {}", text);
@@ -85,13 +80,10 @@ impl WsClient {
                             debug!("expect immediate response, got forwarded")
                         }
                         WsResponseGeneric::Close => {
-                            unreachable!()
+                            bail!("unreachable")
                         }
                         WsResponseGeneric::Log(WsLogResponse {
-                            log_id,
-                            level,
-                            message,
-                            ..
+                            log_id, level, message, ..
                         }) => match level {
                             LogLevel::Error => error!(?log_id, "{}", message),
                             LogLevel::Warn => warn!(?log_id, "{}", message),
@@ -117,5 +109,9 @@ impl WsClient {
     pub async fn request<T: WsRequest>(&mut self, params: T) -> Result<T::Response> {
         self.send_req(T::METHOD_ID, params).await?;
         self.recv_resp().await
+    }
+    pub async fn close(mut self) -> Result<()> {
+        self.stream.close(None).await?;
+        Ok(())
     }
 }

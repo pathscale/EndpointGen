@@ -1,25 +1,30 @@
-use crate::error_code::ErrorCode;
-use crate::handler::*;
-use crate::listener::{ConnectionListener, TcpListener, TlsListener};
-use crate::toolbox::{ArcToolbox, RequestContext, Toolbox};
-use crate::utils::{get_conn_id, get_log_id};
-use crate::ws::basics::WsConnection;
-use crate::ws::*;
-use eyre::*;
+use eyre::{bail, eyre, ContextCompat, Result};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::File;
 use std::net::SocketAddr;
-use std::result::Result::Ok;
+use std::path::PathBuf;
 use std::sync::atomic::AtomicU32;
 use std::sync::Arc;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::mpsc;
+use tokio::task::LocalSet;
 use tokio_tungstenite::tungstenite::Error as WsError;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::WebSocketStream;
 use tracing::*;
+
+use crate::libs::error_code::ErrorCode;
+use crate::libs::handler::{RequestHandler, RequestHandlerErased};
+use crate::libs::listener::{ConnectionListener, TcpListener, TlsListener};
+use crate::libs::toolbox::{ArcToolbox, RequestContext, Toolbox, TOOLBOX};
+use crate::libs::utils::{get_conn_id, get_log_id};
+use crate::libs::ws::{VerifyProtocol, WsClientSession, WsConnection};
+use crate::model::EndpointSchema;
+use crate::libs::ws::client::WsRequest;
+
+use super::{AuthController, ConnectionId, SimpleAuthController, WebsocketStates, WsEndpoint};
 
 pub struct WebsocketServer {
     pub auth_controller: Arc<dyn AuthController>,
@@ -32,7 +37,7 @@ pub struct WebsocketServer {
 impl WebsocketServer {
     pub fn new(config: WsServerConfig) -> Self {
         Self {
-            auth_controller: Arc::new(SimpleAuthContoller),
+            auth_controller: Arc::new(SimpleAuthController),
             handlers: Default::default(),
             message_receiver: None,
             toolbox: Toolbox::new(),
@@ -47,14 +52,8 @@ impl WebsocketServer {
         check_handler::<T>(&schema).expect("Invalid handler");
         self.add_handler_erased(schema, Arc::new(handler))
     }
-    pub fn add_handler_erased(
-        &mut self,
-        schema: EndpointSchema,
-        handler: Arc<dyn RequestHandlerErased>,
-    ) {
-        let old = self
-            .handlers
-            .insert(schema.code, WsEndpoint { schema, handler });
+    pub fn add_handler_erased(&mut self, schema: EndpointSchema, handler: Arc<dyn RequestHandlerErased>) {
+        let old = self.handlers.insert(schema.code, WsEndpoint { schema, handler });
         if let Some(old) = old {
             panic!(
                 "Overwriting handler for endpoint {} {}",
@@ -62,9 +61,7 @@ impl WebsocketServer {
             );
         }
     }
-    async fn handle_ws_handshake_and_connection<
-        S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
-    >(
+    async fn handle_ws_handshake_and_connection<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         self: Arc<Self>,
         addr: SocketAddr,
         states: Arc<WebsocketStates>,
@@ -80,6 +77,10 @@ impl WebsocketServer {
             },
         )
         .await;
+
+        // TODO remove below after tracing log issue
+        tracing::warn!("handle new WS connection");
+
         let stream = wrap_ws_error(hs)?;
         let conn = Arc::new(WsConnection {
             connection_id: get_conn_id(),
@@ -89,10 +90,7 @@ impl WebsocketServer {
             log_id: get_log_id(),
         });
         debug!(?addr, "New connection handshaken {:?}", conn);
-        let headers = rx
-            .recv()
-            .await
-            .ok_or_else(|| eyre!("Failed to receive ws headers"))?;
+        let headers = rx.recv().await.ok_or_else(|| eyre!("Failed to receive ws headers"))?;
 
         let (tx, rx) = mpsc::channel(100);
         let conn = Arc::clone(&conn);
@@ -110,10 +108,8 @@ impl WebsocketServer {
             );
             return Err(err);
         }
-        if !self.config.header_only {
-            self.handle_session_connection(conn, states, stream, rx)
-                .await;
-        }
+        self.handle_session_connection(conn, states, stream, rx).await;
+
         Ok(())
     }
 
@@ -135,88 +131,84 @@ impl WebsocketServer {
     }
 
     pub async fn listen(self) -> Result<()> {
+        info!("Listening on {}", self.config.address);
+
+        // Resolve the address and get the socket address
         let addr = tokio::net::lookup_host(&self.config.address)
             .await?
             .next()
             .with_context(|| format!("Failed to lookup host to bind: {}", self.config.address))?;
 
-        if self.config.pub_certs.is_none() && self.config.priv_key.is_none() {
-            let listener = TcpListener::bind(addr).await?;
-            self.listen_impl(Arc::new(listener), addr).await
+        let listener = TcpListener::bind(addr).await?;
+        if self.config.insecure {
+            self.listen_impl(Arc::new(listener)).await
         } else if self.config.pub_certs.is_some() && self.config.priv_key.is_some() {
-            let listener = TcpListener::bind(addr).await?;
-
+            // Proceed with binding the listener for secure mode
             let listener = TlsListener::bind(
                 listener,
                 self.config.pub_certs.clone().unwrap(),
                 self.config.priv_key.clone().unwrap(),
             )
             .await?;
-            self.listen_impl(Arc::new(listener), addr).await
+            self.listen_impl(Arc::new(listener)).await
         } else {
-            bail!("pub_certs and priv_key should be both set or unset")
+            bail!("pub_certs and priv_key should be set")
         }
     }
 
-    async fn listen_impl<T: ConnectionListener + 'static>(
-        self,
-        listener: Arc<T>,
-        listen_addr: SocketAddr,
-    ) -> Result<()> {
-        info!("{} listening on {}", self.config.name, listen_addr);
-
+    async fn listen_impl<T: ConnectionListener + 'static>(self, listener: Arc<T>) -> Result<()> {
         let states = Arc::new(WebsocketStates::new());
-
         self.toolbox
             .set_ws_states(states.clone_states(), self.config.header_only);
         let this = Arc::new(self);
+        let local_set = LocalSet::new();
+        let (mut sigterm, mut sigint) = crate::libs::signal::init_signals()?;
+        local_set
+            .run_until(async {
+                loop {
+                    tokio::select! {
+                        _ = crate::libs::signal::wait_for_signals(&mut sigterm, &mut sigint) => break,
+                        accepted = listener.accept() => {
+                            let (stream, addr) = match accepted {
+                                Ok(x) => x,
+                                Err(err) => {
+                                    error!("Error while accepting stream: {:?}", err);
+                                    continue;
+                                }
+                            };
+                            let listener = Arc::clone(&listener);
+                            let this = Arc::clone(&this);
+                            let states = Arc::clone(&states);
+                            local_set.spawn_local(async move {
+                                let stream = match listener.handshake(stream).await {
+                                    Ok(channel) => {
+                                        info!("Accepted stream from {}", addr);
+                                        channel
+                                    }
+                                    Err(err) => {
+                                        error!("Error while handshaking stream: {:?}", err);
+                                        return;
+                                    }
+                                };
 
-        loop {
-            let (stream, addr) = match listener.accept().await {
-                Ok(x) => x,
-                Err(err) => {
-                    error!("Error while accepting stream: {:?}", err);
-                    continue;
-                }
-            };
-            let listener = Arc::clone(&listener);
-            let this = Arc::clone(&this);
-            let states = Arc::clone(&states);
-            tokio::spawn(async move {
-                let stream = match listener.handshake(stream).await {
-                    Ok(channel) => {
-                        info!("Accepted stream from {}", addr);
-                        channel
+                                let future = TOOLBOX.scope(this.toolbox.clone(), this.handle_ws_handshake_and_connection(addr, states, stream));
+                                if let Err(err) = future.await {
+                                    error!("Error while handling connection: {:?}", err);
+                                }
+                            });
+                        }
                     }
-                    Err(err) => {
-                        error!("Error while handshaking stream: {:?}", err);
-                        return;
-                    }
-                };
-
-                if let Err(err) = this
-                    .handle_ws_handshake_and_connection(addr, states, stream)
-                    .await
-                {
-                    error!("Error while handling connection: {:?}", err);
                 }
-            });
-        }
+                Ok(())
+            })
+            .await
     }
+
     pub fn dump_schemas(&self) -> Result<()> {
         let _ = std::fs::create_dir_all("docs");
         let file = format!("docs/{}_alive_endpoints.json", self.config.name);
-        let available_schemas: Vec<String> = self
-            .handlers
-            .values()
-            .map(|x| x.schema.name.clone())
-            .sorted()
-            .collect();
-        info!(
-            "Dumping {} endpoint names to {}",
-            available_schemas.len(),
-            file
-        );
+        let available_schemas: Vec<String> = self.handlers.values().map(|x| x.schema.name.clone()).sorted().collect();
+        info!("Dumping {} endpoint names to {}", available_schemas.len(), file);
         serde_json::to_writer_pretty(File::create(file)?, &available_schemas)?;
         Ok(())
     }
@@ -245,16 +237,17 @@ pub fn check_handler<T: RequestHandler + 'static>(schema: &EndpointSchema) -> Re
     Ok(())
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct WsServerConfig {
     #[serde(default)]
     pub name: String,
-    #[serde(default)]
     pub address: String,
     #[serde(default)]
-    pub pub_certs: Option<Vec<String>>,
+    pub pub_certs: Option<Vec<PathBuf>>,
     #[serde(default)]
-    pub priv_key: Option<String>,
+    pub priv_key: Option<PathBuf>,
+    #[serde(default)]
+    pub insecure: bool,
     #[serde(default)]
     pub debug: bool,
     #[serde(skip)]

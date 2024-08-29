@@ -1,12 +1,21 @@
-use eyre::*;
-use serde::*;
 use std::future::Future;
+
+use eyre::Result;
+use serde::*;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RDataTable<T> {
     rows: Vec<T>,
 }
 
+impl<T> IntoIterator for RDataTable<T> {
+    type Item = T;
+    type IntoIter = std::vec::IntoIter<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.rows.into_iter()
+    }
+}
 impl<T> RDataTable<T> {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
@@ -21,9 +30,6 @@ impl<T> RDataTable<T> {
     }
     pub fn into_rows(self) -> Vec<T> {
         self.rows
-    }
-    pub fn into_iter(self) -> impl Iterator<Item = T> {
-        self.rows.into_iter()
     }
     pub fn iter(&self) -> impl Iterator<Item = &T> {
         self.rows.iter()
@@ -43,10 +49,7 @@ impl<T> RDataTable<T> {
     pub fn map<R>(self, f: impl Fn(T) -> R) -> Vec<R> {
         self.rows.into_iter().map(f).collect()
     }
-    pub async fn map_async<R, F: Future<Output = Result<R>>>(
-        self,
-        f: impl Fn(T) -> F,
-    ) -> Result<Vec<R>> {
+    pub async fn map_async<R, F: Future<Output = Result<R>>>(self, f: impl Fn(T) -> F) -> Result<Vec<R>> {
         let mut futures = Vec::with_capacity(self.rows.len());
         for row in self.rows {
             futures.push(f(row).await?);

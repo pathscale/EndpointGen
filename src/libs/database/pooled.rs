@@ -1,5 +1,3 @@
-use crate::database::{DatabaseConfig, DatabaseRequest};
-use crate::datatable::RDataTable;
 use dashmap::DashMap;
 use deadpool_postgres::Runtime;
 use deadpool_postgres::*;
@@ -17,6 +15,11 @@ pub use tokio_postgres::types::ToSql;
 use tokio_postgres::Statement;
 pub use tokio_postgres::{NoTls, Row, ToStatement};
 use tracing::*;
+
+use crate::libs::datatable::RDataTable;
+
+use super::DatabaseConfig;
+use super::DatabaseRequest;
 
 #[derive(Clone)]
 pub struct PooledDbClient {

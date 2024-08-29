@@ -1,20 +1,23 @@
-use crate::toolbox::{ArcToolbox, RequestContext, Toolbox};
-use crate::ws::WsConnection;
 use chrono::Utc;
 use convert_case::Case;
 use convert_case::Casing;
-use eyre::*;
-use futures::future::BoxFuture;
+use eyre::{bail, Context, ContextCompat, Result};
+use futures::future::LocalBoxFuture;
 use futures::FutureExt;
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::result::Result::Ok;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use tokio_tungstenite::tungstenite::handshake::server::{
-    Callback, ErrorResponse, Request, Response,
-};
+use tokio_tungstenite::tungstenite::handshake::server::{Callback, ErrorResponse, Request, Response};
 use tracing::*;
+
+use crate::libs::toolbox::ArcToolbox;
+use crate::libs::toolbox::RequestContext;
+use crate::libs::toolbox::Toolbox;
+use crate::model::EndpointSchema;
+use crate::model::Type;
+
+use super::WsConnection;
 
 pub struct VerifyProtocol<'a> {
     pub addr: SocketAddr,
@@ -23,11 +26,7 @@ pub struct VerifyProtocol<'a> {
 }
 
 impl<'a> Callback for VerifyProtocol<'a> {
-    fn on_request(
-        self,
-        request: &Request,
-        mut response: Response,
-    ) -> Result<Response, ErrorResponse> {
+    fn on_request(self, request: &Request, mut response: Response) -> Result<Response, ErrorResponse> {
         let addr = self.addr;
         debug!(?addr, "handshake request: {:?}", request);
 
@@ -39,9 +38,7 @@ impl<'a> Callback for VerifyProtocol<'a> {
         let protocol_str = match protocol {
             Some(protocol) => protocol
                 .to_str()
-                .map_err(|_| {
-                    ErrorResponse::new(Some("Sec-WebSocket-Protocol is not valid utf-8".to_owned()))
-                })?
+                .map_err(|_| ErrorResponse::new(Some("Sec-WebSocket-Protocol is not valid utf-8".to_owned())))?
                 .to_string(),
             None => "".to_string(),
         };
@@ -54,12 +51,7 @@ impl<'a> Callback for VerifyProtocol<'a> {
         if !protocol_str.is_empty() {
             response.headers_mut().insert(
                 "Sec-WebSocket-Protocol",
-                protocol_str
-                    .split(',')
-                    .next()
-                    .unwrap_or("")
-                    .parse()
-                    .unwrap(),
+                protocol_str.split(',').next().unwrap_or("").parse().unwrap(),
             );
         }
 
@@ -104,18 +96,18 @@ pub trait AuthController: Sync + Send {
         toolbox: &ArcToolbox,
         header: String,
         conn: Arc<WsConnection>,
-    ) -> BoxFuture<'static, Result<()>>;
+    ) -> LocalBoxFuture<'static, Result<()>>;
 }
 
-pub struct SimpleAuthContoller;
+pub struct SimpleAuthController;
 
-impl AuthController for SimpleAuthContoller {
+impl AuthController for SimpleAuthController {
     fn auth(
         self: Arc<Self>,
         _toolbox: &ArcToolbox,
         _header: String,
         _conn: Arc<WsConnection>,
-    ) -> BoxFuture<'static, Result<()>> {
+    ) -> LocalBoxFuture<'static, Result<()>> {
         async move { Ok(()) }.boxed()
     }
 }
@@ -127,7 +119,7 @@ pub trait SubAuthController: Sync + Send {
         param: serde_json::Value,
         ctx: RequestContext,
         conn: Arc<WsConnection>,
-    ) -> BoxFuture<'static, Result<serde_json::Value>>;
+    ) -> LocalBoxFuture<'static, Result<serde_json::Value>>;
 }
 pub struct EndpointAuthController {
     pub auth_endpoints: HashMap<String, WsAuthController>,
@@ -149,11 +141,7 @@ impl EndpointAuthController {
             auth_endpoints: Default::default(),
         }
     }
-    pub fn add_auth_endpoint(
-        &mut self,
-        schema: EndpointSchema,
-        handler: impl SubAuthController + 'static,
-    ) {
+    pub fn add_auth_endpoint(&mut self, schema: EndpointSchema, handler: impl SubAuthController + 'static) {
         self.auth_endpoints.insert(
             schema.name.to_ascii_lowercase(),
             WsAuthController {
@@ -195,11 +183,10 @@ impl AuthController for EndpointAuthController {
         toolbox: &ArcToolbox,
         header: String,
         conn: Arc<WsConnection>,
-    ) -> BoxFuture<'static, Result<()>> {
+    ) -> LocalBoxFuture<'static, Result<()>> {
         let toolbox = toolbox.clone();
 
         async move {
-            debug!("Handing auth request: {:?}", header);
             let splits = header
                 .split(',')
                 .map(|x| x.trim())
@@ -208,6 +195,7 @@ impl AuthController for EndpointAuthController {
                 .collect::<HashMap<&str, &str>>();
 
             let method = splits.get("0").context("Could not find method")?;
+            // info!("method: {:?}", method);
             let endpoint = self
                 .auth_endpoints
                 .get(*method)
@@ -219,11 +207,7 @@ impl AuthController for EndpointAuthController {
                     Some(value) => {
                         params.insert(param.name.to_case(Case::Camel), parse_ty(&param.ty, value)?);
                     }
-                    None if match &param.ty {
-                        Type::Optional(_) => false,
-                        _ => true,
-                    } =>
-                    {
+                    None if !matches!(&param.ty, Type::Optional(_)) => {
                         bail!("Could not find param {} {}", param.name, index);
                     }
                     _ => {}
@@ -249,6 +233,6 @@ impl AuthController for EndpointAuthController {
             }
             Ok(())
         }
-        .boxed()
+        .boxed_local()
     }
 }
