@@ -66,7 +66,7 @@ fn main() -> eyre::Result<()> {
 
     let data = Data {
         project_root: PathBuf::from(&root),
-        output_dir: PathBuf::from(root),
+        output_dir: PathBuf::from(output_dir),
         services: gen_src::services::get_services(),
         enums: gen_src::enums::get_enums(),
         pg_funcs: gen_src::proc_funcs::get_proc_functions(),
