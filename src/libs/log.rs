@@ -70,7 +70,6 @@ fn build_env_filter(log_level: LogLevel) -> eyre::Result<EnvFilter> {
     if log_level != LogLevel::Detail {
         filter = filter
             .add_directive("tungstenite::protocol=debug".parse()?)
-            .add_directive("tokio_postgres::connection=debug".parse()?)
             .add_directive("tokio_util::codec::framed_impl=debug".parse()?)
             .add_directive("tokio_tungstenite=debug".parse()?)
             .add_directive("h2=info".parse()?)
