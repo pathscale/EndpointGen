@@ -1,5 +1,4 @@
 use crate::model::{EnumVariant, Field, ProceduralFunction, Type};
-use crate::sql::{ToSql, PARAM_PREFIX};
 use crate::{docs, Data};
 use convert_case::{Case, Casing};
 use eyre::bail;
@@ -127,104 +126,106 @@ pub fn get_parameter_type(this: &ProceduralFunction) -> Type {
 }
 
 pub fn pg_func_to_rust_trait_impl(this: &ProceduralFunction) -> String {
-    let mut arguments = this.parameters.iter().enumerate().map(|(i, x)| {
-        format!(
-            "{}{} => ${}::{}",
-            PARAM_PREFIX,
-            x.name,
-            i + 1,
-            x.ty.to_sql()
-        )
-    });
-    let sql = format!("SELECT * FROM api.{}({});", this.name, arguments.join(", "));
-    let pg_params = this
-        .parameters
-        .iter()
-        .map(|x| format!("&self.{} as &(dyn ToSql + Sync)", x.name))
-        .join(", ");
+//     let mut arguments = this.parameters.iter().enumerate().map(|(i, x)| {
+//         format!(
+//             "{}{} => ${}::{}",
+//             PARAM_PREFIX,
+//             x.name,
+//             i + 1,
+//             x.ty.to_sql()
+//         )
+//     });
+//     let sql = format!("SELECT * FROM api.{}({});", this.name, arguments.join(", "));
+//     let pg_params = this
+//         .parameters
+//         .iter()
+//         .map(|x| format!("&self.{} as &(dyn ToSql + Sync)", x.name))
+//         .join(", ");
 
-    format!(
-        "
-        #[allow(unused_variables)]
-        impl DatabaseRequest for {name}Req {{
-          type ResponseRow = {ret_name};
-          fn statement(&self) -> &str {{
-            \"{sql}\"
-          }}
-          fn params(&self) -> Vec<&(dyn ToSql + Sync)> {{
-            vec![{pg_params}]
-          }}
-        }}
-",
-        name = this.name.to_case(Case::Pascal),
-        ret_name = match &this.return_row_type {
-            Type::Struct { name, .. } => name,
-            _ => unreachable!(),
-        },
-        sql = sql,
-        pg_params = pg_params,
-    )
+//     format!(
+//         "
+//         #[allow(unused_variables)]
+//         impl DatabaseRequest for {name}Req {{
+//           type ResponseRow = {ret_name};
+//           fn statement(&self) -> &str {{
+//             \"{sql}\"
+//           }}
+//           fn params(&self) -> Vec<&(dyn ToSql + Sync)> {{
+//             vec![{pg_params}]
+//           }}
+//         }}
+// ",
+//         name = this.name.to_case(Case::Pascal),
+//         ret_name = match &this.return_row_type {
+//             Type::Struct { name, .. } => name,
+//             _ => unreachable!(),
+//         },
+//         sql = sql,
+//         pg_params = pg_params,
+//     )
+String::from("")
 }
 
 pub fn gen_db_rs(data: &Data) -> eyre::Result<()> {
-    let db_filename = data.output_dir.join("database.rs");
-    let mut db = File::create(&db_filename)?;
+//     let db_filename = data.output_dir.join("database.rs");
+//     let mut db = File::create(&db_filename)?;
 
-    write!(
-        &mut db,
-        "use lib::database::*;
-        #[allow(unused_imports)]
-        use lib::types::*;
-        use crate::model::*;
-        use serde::*;
-        use rust_decimal::Decimal;
-        use postgres_from_row::FromRow;\n"
-    )?;
-    let mut types = BTreeSet::new();
-    for func in &data.pg_funcs {
-        types.insert(&func.return_row_type);
-    }
-    for ty in types {
-        write!(
-            &mut db,
-            "
-{}
-",
-            [ty].into_iter()
-                .filter(|x| !matches!(x, Type::Unit))
-                .map(|x| {
-                    format!(
-                        "#[derive(Serialize, Deserialize, Debug, Clone, FromRow)]\n{}",
-                        x.to_rust_decl(false)
-                    )
-                })
-                .join("\n"),
-        )?;
-    }
-    for func in &data.pg_funcs {
-        write!(
-            &mut db,
-            "
-{}
-{}
-",
-            [get_parameter_type(func)]
-                .into_iter()
-                .filter(|x| !matches!(x, Type::Unit))
-                .map(|x| {
-                    format!(
-                        "#[derive(Serialize, Deserialize, Debug, Clone)]\n{}",
-                        x.to_rust_decl(false)
-                    )
-                })
-                .join("\n"),
-            pg_func_to_rust_trait_impl(func)
-        )?;
-    }
-    db.flush()?;
-    drop(db);
-    rustfmt(&db_filename)?;
-    Ok(())
+//     write!(
+//         &mut db,
+//         "use lib::database::*;
+//         #[allow(unused_imports)]
+//         use lib::types::*;
+//         use crate::model::*;
+//         use serde::*;
+//         use rust_decimal::Decimal;
+//         use postgres_from_row::FromRow;\n"
+//     )?;
+//     let mut types = BTreeSet::new();
+//     for func in &data.pg_funcs {
+//         types.insert(&func.return_row_type);
+//     }
+//     for ty in types {
+//         write!(
+//             &mut db,
+//             "
+// {}
+// ",
+//             [ty].into_iter()
+//                 .filter(|x| !matches!(x, Type::Unit))
+//                 .map(|x| {
+//                     format!(
+//                         "#[derive(Serialize, Deserialize, Debug, Clone, FromRow)]\n{}",
+//                         x.to_rust_decl(false)
+//                     )
+//                 })
+//                 .join("\n"),
+//         )?;
+//     }
+//     for func in &data.pg_funcs {
+//         write!(
+//             &mut db,
+//             "
+// {}
+// {}
+// ",
+//             [get_parameter_type(func)]
+//                 .into_iter()
+//                 .filter(|x| !matches!(x, Type::Unit))
+//                 .map(|x| {
+//                     format!(
+//                         "#[derive(Serialize, Deserialize, Debug, Clone)]\n{}",
+//                         x.to_rust_decl(false)
+//                     )
+//                 })
+//                 .join("\n"),
+//             pg_func_to_rust_trait_impl(func)
+//         )?;
+//     }
+//     db.flush()?;
+//     drop(db);
+//     rustfmt(&db_filename)?;
+//     Ok(())
+Ok(())
 }
 
 pub fn collect_rust_recursive_types(t: Type) -> Vec<Type> {
