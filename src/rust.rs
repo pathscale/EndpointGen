@@ -167,6 +167,10 @@ pub fn pg_func_to_rust_trait_impl(this: &ProceduralFunction) -> String {
 }
 
 pub fn gen_db_rs(data: &Data) -> eyre::Result<()> {
+    if data.pg_funcs.is_empty() {
+        return Ok(());
+    }
+    
     let db_filename = data.output_dir.join("database.rs");
     let mut db = File::create(&db_filename)?;
 
