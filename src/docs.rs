@@ -5,7 +5,7 @@ use eyre::Context;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::fs::{create_dir_all, File};
+use std::fs::{create_dir_all, File, OpenOptions};
 use std::io::Write;
 use std::path::Path;
 
@@ -89,10 +89,17 @@ pub fn get_error_messages(root: &Path) -> eyre::Result<ErrorMessages> {
     // Ensure the parent directories exist, and create the file
     if let Some(parent) = def_filename.parent() {
         std::fs::create_dir_all(parent)?;
-        File::create(&def_filename)?;
     }
 
-    let def_file = std::fs::read(def_filename)?;
+    if !def_filename.exists() {
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(&def_filename)?;
+    }
+
+    // Read the file contents
+    let def_file = std::fs::read(&def_filename)?;
 
     if def_file.is_empty() {
         return Ok(ErrorMessages {
