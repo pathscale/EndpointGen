@@ -256,14 +256,12 @@ pub fn gen_model_rs(data: &Data) -> eyre::Result<()> {
     let mut f = File::create(&db_filename)?;
     write!(
         &mut f,
-        "use tokio_postgres::types::*;
-        use serde::*;
-        use num_derive::FromPrimitive;
-        use strum_macros::{{EnumString, Display}};
-        use lib::error_code::ErrorCode;
-        use lib::ws::*;
-        use lib::types::*;
-        use rust_decimal::Decimal;\n
+        "use num_derive::FromPrimitive;
+         use serde::*;
+         use strum_macros::{{Display, EnumString}};
+         use tokio_postgres::types::*;
+         use endpoint_gen::libs::ws::*;
+         use endpoint_gen::libs::error_code::ErrorCode;\n
         "
     )?;
 
