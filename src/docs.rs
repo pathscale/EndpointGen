@@ -1,10 +1,11 @@
 use crate::model::{Service, Type};
 use crate::service::get_systemd_service;
 use crate::Data;
+use eyre::Context;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::fs::{create_dir_all, File, OpenOptions};
+use std::fs::{create_dir_all, File};
 use std::io::Write;
 use std::path::Path;
 
@@ -22,12 +23,8 @@ pub fn gen_services_docs(docs: &Data) -> eyre::Result<()> {
         std::fs::create_dir_all(parent)?;
     }
 
-    let mut docs_file = OpenOptions::new()
-    .write(true)
-    .create(true)  
-    .append(true)  
-    .open(&docs_filename)?;
-
+    let mut docs_file = File::create(&docs_filename)
+        .with_context(|| format!("Failed to create docs file: {}", docs_filename.display()))?;
     serde_json::to_writer_pretty(
         &mut docs_file,
         &json!({
@@ -92,12 +89,8 @@ pub fn get_error_messages(root: &Path) -> eyre::Result<ErrorMessages> {
     // Ensure the parent directories exist, and create the file
     if let Some(parent) = def_filename.parent() {
         std::fs::create_dir_all(parent)?;
+        File::create(&def_filename)?;
     }
-
-    OpenOptions::new()
-    .read(true)
-    .create(true)  
-    .open(&def_filename)?;
 
     let def_file = std::fs::read(def_filename)?;
 
