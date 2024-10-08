@@ -1,4 +1,4 @@
-use crate::model::{Service, Type};
+use endpoint_libs::model::{Service, Type};
 use crate::service::get_systemd_service;
 use crate::Data;
 use eyre::Context;
