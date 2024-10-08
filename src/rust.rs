@@ -1,7 +1,7 @@
-use crate::model::{EnumVariant, Field, ProceduralFunction, Type};
 use crate::sql::{ToSql, PARAM_PREFIX};
 use crate::{docs, Data};
 use convert_case::{Case, Casing};
+use endpoint_libs::model::{EnumVariant, Field, ProceduralFunction, Type};
 use eyre::bail;
 use itertools::Itertools;
 use std::collections::BTreeSet;

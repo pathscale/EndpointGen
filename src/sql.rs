@@ -1,4 +1,4 @@
-use crate::model::{Field, ProceduralFunction, Type};
+use endpoint_libs::model::{Field, ProceduralFunction, Type};
 use crate::Data;
 use convert_case::{Case, Casing};
 use itertools::Itertools;
