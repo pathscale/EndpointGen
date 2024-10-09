@@ -59,10 +59,10 @@ fn main(data: Data) -> Result<()> {
     let output_dir = project_root.join("generated");
 
     let service_content = fs::read_to_string(&args.service_file)?;
-    let services: ServicesConfig = toml::from_str(&service_content);
+    let services: ServicesConfig = toml::from_str(&service_content)?;
 
     let enums_content = fs::read_to_string(&args.enum_file)?;
-    let enums: EnumsConfig = toml::from_str(&service_content);
+    let enums: EnumsConfig = toml::from_str(&service_content)?;
 
     let data = Data {
         project_root,
