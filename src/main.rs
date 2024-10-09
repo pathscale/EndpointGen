@@ -1,7 +1,10 @@
 use std::{fs, path::PathBuf, str::FromStr};
 
+use clap::Parser;
 use endpoint_libs::model::{ProceduralFunction, Service, Type};
 use eyre::*;
+use serde::Deserialize;
+use std::env;
 
 pub mod docs;
 pub mod rust;
@@ -45,12 +48,12 @@ struct EnumsConfig {
     pub enums: Vec<Type>,
 }
 
-fn main(data: Data) -> Result<()> {
+fn main() -> Result<()> {
     let args = Cli::parse();
 
     let project_root: PathBuf = {
         if let Some(output_dir) = &args.output {
-            PathBuf::from_str(output_dir)
+            PathBuf::from_str(output_dir)?
         } else {
             env::current_dir()?
         }
@@ -75,9 +78,6 @@ fn main(data: Data) -> Result<()> {
     docs::gen_md_docs(&data)?;
     rust::gen_model_rs(&data)?;
     sql::gen_model_sql(&data)?;
-    sql::gen_db_sql(&data)?;
-    rust::gen_db_rs(&data)?;
-    // docs::gen_systemd_services(&data, "trading", "trading")?;
     docs::gen_error_message_md(&data.project_root)?;
     Ok(())
 }
