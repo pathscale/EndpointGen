@@ -1,6 +1,5 @@
 use crate::Data;
-use convert_case::{Case, Casing};
-use endpoint_libs::model::{Field, ProceduralFunction, Type};
+use endpoint_libs::model::{ProceduralFunction, Type};
 use itertools::Itertools;
 use std::fs::File;
 use std::io::Write;
