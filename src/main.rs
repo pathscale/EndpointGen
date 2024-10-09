@@ -45,7 +45,7 @@ struct ServicesConfig {
 
 #[derive(Deserialize, Debug)]
 struct EnumsConfig {
-    pub enums: Vec<Type>,
+    pub types: Vec<Type>,
 }
 
 fn main() -> Result<()> {
