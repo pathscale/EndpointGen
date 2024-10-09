@@ -65,7 +65,7 @@ fn main() -> Result<()> {
     let services: ServicesConfig = toml::from_str(&service_content)?;
 
     let enums_content = fs::read_to_string(&args.enum_file)?;
-    let enums: EnumsConfig = toml::from_str(&service_content)?;
+    let enums: EnumsConfig = toml::from_str(&enums_content)?;
 
     let data = Data {
         project_root,
