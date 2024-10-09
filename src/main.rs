@@ -71,7 +71,7 @@ fn main() -> Result<()> {
         project_root,
         output_dir,
         services: services.services,
-        enums: enums.enums,
+        enums: enums.types,
     };
 
     docs::gen_services_docs(&data)?;
