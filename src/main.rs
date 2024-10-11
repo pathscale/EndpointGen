@@ -23,8 +23,8 @@ struct Cli {
     service_file: String,
 
     /// The input TOML file for enums
-    #[arg(short, long, required = true)]
-    enum_file: String,
+    #[arg(short, long)]
+    enum_file: Option<String>,
 
     /// Output directory for the generated files
     #[arg(short, long)]
@@ -64,15 +64,27 @@ fn main() -> Result<()> {
     let service_content = fs::read_to_string(&args.service_file)?;
     let services: ServicesConfig = toml::from_str(&service_content)?;
 
-    let enums_content = fs::read_to_string(&args.enum_file)?;
-    let enums: EnumsConfig = toml::from_str(&enums_content)?;
+    let data = match &args.enum_file {
+        Some(file) => {
+            let enums_content = fs::read_to_string(file)?;
+            let enums: EnumsConfig = toml::from_str(&enums_content)?;
 
-    let data = Data {
-        project_root,
-        output_dir,
-        services: services.services,
-        enums: enums.types,
+            Data {
+                project_root,
+                output_dir,
+                services: services.services,
+                enums: enums.types,
+            }
+        },
+        None => Data {
+            project_root,
+            output_dir,
+            services: services.services,
+            enums: vec![],
+        },
     };
+
+    
 
     docs::gen_services_docs(&data)?;
     docs::gen_md_docs(&data)?;
