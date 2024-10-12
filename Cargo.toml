@@ -52,3 +52,4 @@ lazy_static = "1.5.0"
 tokio-util = "0.7.11"
 hyper-util = { version = "0.1.7", features = ["full"] }
 ron = "0.8"
+walkdir = "2.5"
