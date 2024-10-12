@@ -5,7 +5,8 @@ use std::{
 use clap::Parser;
 use endpoint_libs::model::{EndpointSchema, Service, Type};
 use eyre::*;
-use serde::Deserialize;
+use ron::{extensions::Extensions, ser::PrettyConfig};
+use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 use std::env;
 use std::result::Result::Ok;
@@ -46,7 +47,7 @@ enum RustConfig {
     EnumList(Vec<Type>),
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 enum SchemaType {
     Service,
     Enum,
@@ -55,7 +56,7 @@ enum SchemaType {
     EndpointSchemaList(String),
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 struct RonSchema {
     schema_type: SchemaType,
 }
@@ -118,6 +119,16 @@ struct InputObjects {
 } 
 
 fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
+    let test_ron_schema = RonSchema {
+        schema_type: SchemaType::EnumList,
+    };
+
+    let pretty_config = PrettyConfig::new().depth_limit(5).compact_arrays(false).separate_tuple_members(true).extensions(Extensions::UNWRAP_NEWTYPES | Extensions::UNWRAP_VARIANT_NEWTYPES).struct_names(true);
+
+    let test_ron_string = ron::ser::to_string_pretty(&test_ron_schema, pretty_config);
+    std::fs::write("test_schema.ron", test_ron_string.unwrap());
+
+
     let rust_configs = process_input_files(dir)?;
 
     let mut service_schema_map: HashMap<String, Vec<EndpointSchema>> = HashMap::new();
