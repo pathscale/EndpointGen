@@ -143,7 +143,7 @@ fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
         .extensions(Extensions::UNWRAP_NEWTYPES | Extensions::UNWRAP_VARIANT_NEWTYPES)
         .struct_names(true);
 
-    let test_ron_string = ron::ser::to_string_pretty(&test_ron_schema, pretty_config);
+    let test_ron_string = ron::ser::to_string(&test_ron_schema);
     std::fs::write("test_schema.ron", test_ron_string.unwrap());
 
     let rust_configs = process_input_files(dir)?;
