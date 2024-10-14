@@ -1,6 +1,5 @@
-use endpoint_libs::model::{Field, ProceduralFunction, Type};
 use crate::Data;
-use convert_case::{Case, Casing};
+use endpoint_libs::model::{ProceduralFunction, Type};
 use itertools::Itertools;
 use std::fs::File;
 use std::io::Write;
@@ -82,34 +81,6 @@ $$;
             body = self.body
         )
     }
-}
-
-pub fn gen_db_sql(data: &Data) -> eyre::Result<()> {
-    let funcs = &data.pg_funcs;
-
-    let db_filename = data.project_root.join("db/api.sql");
-    let mut f = File::create(db_filename)?;
-    writeln!(&mut f, "CREATE SCHEMA IF NOT EXISTS api;")?;
-    for func in funcs {
-        writeln!(&mut f, "{}", func.to_sql())?;
-    }
-    for srv in &data.services {
-        writeln!(
-            &mut f,
-            "{}",
-            ProceduralFunction::new(
-                format!("{}_SERVICE", srv.name.to_case(Case::ScreamingSnake)),
-                vec![],
-                vec![Field::new("code", Type::Int)],
-                format!("BEGIN RETURN QUERY SELECT {}; END", srv.id),
-            )
-            .to_sql()
-        )?;
-    }
-    f.flush()?;
-    drop(f);
-
-    Ok(())
 }
 
 pub fn gen_model_sql(data: &Data) -> eyre::Result<()> {
