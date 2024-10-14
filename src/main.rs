@@ -7,7 +7,7 @@ use std::{
 use clap::Parser;
 use endpoint_libs::model::{EndpointSchema, Service, Type};
 use eyre::*;
-use ron::{extensions::Extensions, ser::PrettyConfig};
+use ron::{de::from_reader, extensions::Extensions, ser::PrettyConfig};
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::result::Result::Ok;
@@ -66,28 +66,28 @@ struct Schema {
 fn process_file(file_path: &Path) -> eyre::Result<RustConfig> {
     match file_path.extension() {
         Some(extension) if extension == "ron" => {
-            let file_string = ron::to_string_pretty(&file_path)?;
-            let schema: Schema = ron::from_str(&file_string)?;
+            let f = File::open(input_path)?;
+            let schema: Schema = from_reader(f)?;
 
             match schema.schema_type {
                 SchemaType::Service => {
-                    let service: Service = ron::from_str(&file_string)?;
+                    let service: Service = ron::from_reader(&input_path)?;
                     return Ok(RustConfig::Service(service));
                 }
                 SchemaType::Enum => {
-                    let enum_type: Type = ron::from_str(&file_string)?;
+                    let enum_type: Type = ron::from_reader(&input_path)?;
                     return Ok(RustConfig::Enum(enum_type));
                 }
                 SchemaType::EnumList => {
-                    let enums: Vec<Type> = ron::from_str(&file_string)?;
+                    let enums: Vec<Type> = ron::from_reader(&input_path)?;
                     return Ok(RustConfig::EnumList(enums));
                 }
                 SchemaType::EndpointSchema(service_name) => {
-                    let endpoint_schema: EndpointSchema = ron::from_str(&file_string)?;
+                    let endpoint_schema: EndpointSchema = ron::from_reader(&input_path)?;
                     return Ok(RustConfig::EndpointSchema(service_name, endpoint_schema));
                 }
                 SchemaType::EndpointSchemaList(service_name) => {
-                    let endpoint_schemas: Vec<EndpointSchema> = ron::from_str(&file_string)?;
+                    let endpoint_schemas: Vec<EndpointSchema> = ron::from_reader(&input_path)?;
                     return Ok(RustConfig::EndpointSchemaList(
                         service_name,
                         endpoint_schemas,
