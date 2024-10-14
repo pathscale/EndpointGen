@@ -74,9 +74,9 @@ fn process_file(file_path: &Path) -> eyre::Result<RustConfig> {
                 .filter(|c| !c.is_whitespace())
                 .collect();
             println!("OPENED FILE, CONTENTS: {file_string}");
-            let schema: Schema = from_str(&file_string)?;
+            let config_file: ConfigFile = from_str(&file_string)?;
 
-            match schema.schema_type {
+            match config_file.schema.schema_type {
                 SchemaType::Service => {
                     let service: Service = from_str(&file_string)?;
                     return Ok(RustConfig::Service(service));
