@@ -5,7 +5,7 @@ use std::{
 };
 
 use clap::Parser;
-use endpoint_libs::model::{EndpointSchema, Service, Type};
+use endpoint_libs::model::{EndpointSchema, Field, Service, Type};
 use eyre::*;
 use ron::{de::from_reader, extensions::Extensions, from_str, ser::PrettyConfig};
 use serde::{Deserialize, Serialize};
@@ -112,7 +112,15 @@ struct InputObjects {
 
 fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
     let test_file = Config {
-        definition: Definition::Enum(Type::BigInt),
+        definition: Definition::EndpointSchemaList(
+            String::from("service 1"),
+            vec![EndpointSchema::new(
+                "test",
+                123,
+                vec![Field::new("testinputfield", Type::BigInt)],
+                vec![Field::new("testreturnfield", Type::BigInt)],
+            )],
+        ),
     };
 
     let pretty_config = PrettyConfig::new()
