@@ -74,29 +74,29 @@ fn process_file(file_path: &Path) -> eyre::Result<RustConfig> {
             //     .filter(|c| !c.is_whitespace())
             //     .collect();
 
-            let file_string = std::fs::read_to_string(file_path)?.trim();
+            let file_string = std::fs::read_to_string(file_path)?;
             println!("OPENED FILE, CONTENTS: {file_string}");
-            let config_file: ConfigFile = from_str(file_string)?;
+            let config_file: ConfigFile = from_str(&file_string)?;
 
             match config_file.schema.schema_type {
                 SchemaType::Service => {
-                    let service: Service = from_str(file_string)?;
+                    let service: Service = from_str(&file_string)?;
                     return Ok(RustConfig::Service(service));
                 }
                 SchemaType::Enum => {
-                    let enum_type: Type = from_str(file_string)?;
+                    let enum_type: Type = from_str(&file_string)?;
                     return Ok(RustConfig::Enum(enum_type));
                 }
                 SchemaType::EnumList => {
-                    let enums: Vec<Type> = from_str(file_string)?;
+                    let enums: Vec<Type> = from_str(&file_string)?;
                     return Ok(RustConfig::EnumList(enums));
                 }
                 SchemaType::EndpointSchema(service_name) => {
-                    let endpoint_schema: EndpointSchema = from_str(file_string)?;
+                    let endpoint_schema: EndpointSchema = from_str(&file_string)?;
                     return Ok(RustConfig::EndpointSchema(service_name, endpoint_schema));
                 }
                 SchemaType::EndpointSchemaList(service_name) => {
-                    let endpoint_schemas: Vec<EndpointSchema> = from_str(file_string)?;
+                    let endpoint_schemas: Vec<EndpointSchema> = from_str(&file_string)?;
                     return Ok(RustConfig::EndpointSchemaList(
                         service_name,
                         endpoint_schemas,
