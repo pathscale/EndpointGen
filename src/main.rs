@@ -111,8 +111,8 @@ struct InputObjects {
 }
 
 fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
-    let test_file = RustConfig {
-        Enum: { Type::BigInt },
+    let test_file = ConfigFile {
+        rust_config: RustConfig::Enum(Type::BigInt),
     };
 
     let pretty_config = PrettyConfig::new()
@@ -166,7 +166,6 @@ fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
 
 #[derive(Deserialize, Serialize)]
 struct ConfigFile {
-    schema: Schema,
     rust_config: RustConfig,
 }
 
