@@ -71,23 +71,23 @@ fn process_file(file_path: &Path) -> eyre::Result<RustConfig> {
 
             match schema.schema_type {
                 SchemaType::Service => {
-                    let service: Service = ron::from_reader(&input_path)?;
+                    let service: Service = from_reader(&input_path)?;
                     return Ok(RustConfig::Service(service));
                 }
                 SchemaType::Enum => {
-                    let enum_type: Type = ron::from_reader(&input_path)?;
+                    let enum_type: Type = from_reader(&input_path)?;
                     return Ok(RustConfig::Enum(enum_type));
                 }
                 SchemaType::EnumList => {
-                    let enums: Vec<Type> = ron::from_reader(&input_path)?;
+                    let enums: Vec<Type> = from_reader(&input_path)?;
                     return Ok(RustConfig::EnumList(enums));
                 }
                 SchemaType::EndpointSchema(service_name) => {
-                    let endpoint_schema: EndpointSchema = ron::from_reader(&input_path)?;
+                    let endpoint_schema: EndpointSchema = from_reader(&input_path)?;
                     return Ok(RustConfig::EndpointSchema(service_name, endpoint_schema));
                 }
                 SchemaType::EndpointSchemaList(service_name) => {
-                    let endpoint_schemas: Vec<EndpointSchema> = ron::from_reader(&input_path)?;
+                    let endpoint_schemas: Vec<EndpointSchema> = from_reader(&input_path)?;
                     return Ok(RustConfig::EndpointSchemaList(
                         service_name,
                         endpoint_schemas,
