@@ -134,7 +134,7 @@ struct InputObjects {
 
 fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
     let test_file = ConfigFile {
-        schema: SchemaType::EnumList,
+        schema: Schema { schema_type: Enum },
         rust_config: RustConfig::Enum(Type::BigInt),
     };
 
