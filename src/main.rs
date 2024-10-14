@@ -81,17 +81,22 @@ fn process_file(file_path: &Path) -> eyre::Result<Definition> {
 
 fn process_input_files(dir: PathBuf) -> eyre::Result<Vec<Definition>> {
     let root = dir.as_path();
-    let mut rust_configs: Vec<Definition> = vec![];
-
+    
     // Walk through the directory and all subdirectories
-    for entry in WalkDir::new(root).into_iter().filter_map(Result::ok) {
-        let path = entry.path();
+    let mut paths: Vec<PathBuf> = WalkDir::new(root)
+    .into_iter()
+    .filter_map(|e| e.ok())  // Filter out any errors
+    .filter(|e| e.file_type().is_file()) // Only get files (not directories)
+    .map(|e| e.into_path())  // Convert DirEntry to PathBuf
+    .collect();
 
-        if path.is_file() {
-            match process_file(path) {
-                Ok(rust_config) => rust_configs.push(rust_config),
-                Err(err) => eprintln!("Error processing file: {path:?}, Error: {err}"),
-            }
+    paths.sort();
+
+    let mut rust_configs: Vec<Definition> = vec![];
+    for path in paths {
+        match process_file(path.as_path()) {
+            Ok(rust_config) => rust_configs.push(rust_config),
+            Err(err) => eprintln!("Error processing file: {path:?}, Error: {err}"),
         }
     }
 
