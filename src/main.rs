@@ -67,7 +67,7 @@ struct Schema {
 fn process_file(file_path: &Path) -> eyre::Result<RustConfig> {
     match file_path.extension() {
         Some(extension) if extension == "ron" => {
-            let file_string = std::fs::read_to_string(file_path)?
+            let file_string: String = std::fs::read_to_string(file_path)?
                 .trim()
                 .chars()
                 .filter(|c| !c.is_whitespace())
