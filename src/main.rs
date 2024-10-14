@@ -66,7 +66,7 @@ struct Schema {
 fn process_file(file_path: &Path) -> eyre::Result<RustConfig> {
     match file_path.extension() {
         Some(extension) if extension == "ron" => {
-            let file_string = ron::to_string(&file_path)?;
+            let file_string = ron::to_string_pretty(&file_path)?;
             let schema: Schema = ron::from_str(&file_string)?;
 
             match schema.schema_type {
