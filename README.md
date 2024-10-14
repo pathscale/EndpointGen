@@ -3,6 +3,8 @@
 [![dependency status](https://deps.rs/crate/endpoint-gen/0.1.3/status.svg)](https://deps.rs/crate/endpoint-gen/0.1.3)
 
 
+# NB NB TODO: This readme needs to be updated following binary . Please look at the readme in the examples project for more up to date info.
+
 
 A highly opinionated template engine to help generate endpoints and related pieces for Rust projects
 
