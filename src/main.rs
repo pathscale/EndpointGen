@@ -76,9 +76,9 @@ fn process_file(file_path: &Path) -> eyre::Result<RustConfig> {
 
             let file_string = std::fs::read_to_string(file_path)?;
             println!("OPENED FILE, CONTENTS: {file_string}");
-            let rust_config: RustConfig = from_str(&file_string)?;
+            let config_file: ConfigFile = from_str(&file_string)?;
 
-            return Ok(rust_config);
+            return Ok(config_file.rust_config);
         }
         _ => Err(eyre!(
             "Non RON file OR file without extension in config dir "
