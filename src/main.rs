@@ -43,7 +43,7 @@ pub struct Data {
 }
 
 #[derive(Serialize, Deserialize)]
-enum RustConfig {
+enum Definition {
     Service(Service),
     EndpointSchema(String, EndpointSchema),
     EndpointSchemaList(String, Vec<EndpointSchema>),
@@ -65,7 +65,7 @@ struct Schema {
     schema_type: SchemaType,
 }
 
-fn process_file(file_path: &Path) -> eyre::Result<RustConfig> {
+fn process_file(file_path: &Path) -> eyre::Result<Definition> {
     match file_path.extension() {
         Some(extension) if extension == "ron" => {
             // let file_string: String = std::fs::read_to_string(file_path)?
@@ -76,9 +76,9 @@ fn process_file(file_path: &Path) -> eyre::Result<RustConfig> {
 
             let file_string = std::fs::read_to_string(file_path)?;
             println!("OPENED FILE, CONTENTS: {file_string}");
-            let config_file: ConfigFile = from_str(&file_string)?;
+            let config_file: Config = from_str(&file_string)?;
 
-            return Ok(config_file.rust_config);
+            return Ok(config_file.definition);
         }
         _ => Err(eyre!(
             "Non RON file OR file without extension in config dir "
@@ -86,9 +86,9 @@ fn process_file(file_path: &Path) -> eyre::Result<RustConfig> {
     }
 }
 
-fn process_input_files(dir: PathBuf) -> eyre::Result<Vec<RustConfig>> {
+fn process_input_files(dir: PathBuf) -> eyre::Result<Vec<Definition>> {
     let root = dir.as_path();
-    let mut rust_configs: Vec<RustConfig> = vec![];
+    let mut rust_configs: Vec<Definition> = vec![];
 
     // Walk through the directory and all subdirectories
     for entry in WalkDir::new(root).into_iter().filter_map(Result::ok) {
@@ -111,8 +111,8 @@ struct InputObjects {
 }
 
 fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
-    let test_file = ConfigFile {
-        rust_config: RustConfig::Enum(Type::BigInt),
+    let test_file = Config {
+        definition: Definition::Enum(Type::BigInt),
     };
 
     let pretty_config = PrettyConfig::new()
@@ -135,17 +135,17 @@ fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
 
     for config in rust_configs {
         match config {
-            RustConfig::Service(service) => services.push(service),
-            RustConfig::EndpointSchema(service_name, endpoint_schema) => service_schema_map
+            Definition::Service(service) => services.push(service),
+            Definition::EndpointSchema(service_name, endpoint_schema) => service_schema_map
                 .entry(service_name)
                 .or_insert(vec![])
                 .push(endpoint_schema),
-            RustConfig::EndpointSchemaList(service_name, endpoint_schemas) => service_schema_map
+            Definition::EndpointSchemaList(service_name, endpoint_schemas) => service_schema_map
                 .entry(service_name)
                 .or_insert(vec![])
                 .extend(endpoint_schemas),
-            RustConfig::Enum(enum_type) => enums.push(enum_type),
-            RustConfig::EnumList(enum_types) => enums.extend(enum_types),
+            Definition::Enum(enum_type) => enums.push(enum_type),
+            Definition::EnumList(enum_types) => enums.extend(enum_types),
         }
     }
 
@@ -165,8 +165,8 @@ fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
 }
 
 #[derive(Deserialize, Serialize)]
-struct ConfigFile {
-    rust_config: RustConfig,
+struct Config {
+    definition: Definition,
 }
 
 fn main() -> Result<()> {
