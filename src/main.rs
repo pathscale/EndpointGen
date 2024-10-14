@@ -132,8 +132,9 @@ struct InputObjects {
 }
 
 fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
-    let test_ron_schema = Schema {
-        schema_type: SchemaType::EnumList,
+    let test_file = ConfigFile {
+        schema: SchemaType::EnumList,
+        rust_config: RustConfig::Enum(Type::BigInt),
     };
 
     let pretty_config = PrettyConfig::new()
@@ -143,7 +144,7 @@ fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
         .extensions(Extensions::UNWRAP_NEWTYPES | Extensions::UNWRAP_VARIANT_NEWTYPES)
         .struct_names(true);
 
-    let test_ron_string = ron::ser::to_string(&test_ron_schema);
+    let test_ron_string = ron::ser::to_string(&test_file);
     std::fs::write("test_schema.ron", test_ron_string.unwrap());
 
     let rust_configs = process_input_files(dir)?;
@@ -183,6 +184,11 @@ fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
     }
 
     Ok(InputObjects { services, enums })
+}
+
+struct ConfigFile {
+    schema: Schema,
+    rust_config: RustConfig,
 }
 
 fn main() -> Result<()> {
