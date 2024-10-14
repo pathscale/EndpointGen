@@ -3,3 +3,7 @@ Cargo.lock
 examples/minimal_project/gen/generated/*
 examples/minimal_project/db/*
 examples/minimal_project/docs/*
+examples/minimal_project/generated/*
+examples/minimal_project/config/db/*
+examples/minimal_project/config/docs/*
+examples/minimal_project/config/generated/*
