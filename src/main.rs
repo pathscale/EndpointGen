@@ -80,23 +80,23 @@ fn process_file(file_path: &Path) -> eyre::Result<RustConfig> {
 
             match config_file.schema.schema_type {
                 SchemaType::Service => {
-                    let service: Service = from_str(&file_string)?;
+                    let service: Service = config_file.rust_config;
                     return Ok(RustConfig::Service(service));
                 }
                 SchemaType::Enum => {
-                    let enum_type: Type = from_str(&file_string)?;
+                    let enum_type: Type = config_file.rust_config;
                     return Ok(RustConfig::Enum(enum_type));
                 }
                 SchemaType::EnumList => {
-                    let enums: Vec<Type> = from_str(&file_string)?;
+                    let enums: Vec<Type> = config_file.rust_config;
                     return Ok(RustConfig::EnumList(enums));
                 }
                 SchemaType::EndpointSchema(service_name) => {
-                    let endpoint_schema: EndpointSchema = from_str(&file_string)?;
+                    let endpoint_schema: EndpointSchema = config_file.rust_config;
                     return Ok(RustConfig::EndpointSchema(service_name, endpoint_schema));
                 }
                 SchemaType::EndpointSchemaList(service_name) => {
-                    let endpoint_schemas: Vec<EndpointSchema> = from_str(&file_string)?;
+                    let endpoint_schemas: Vec<EndpointSchema> = config_file.rust_config;
                     return Ok(RustConfig::EndpointSchemaList(
                         service_name,
                         endpoint_schemas,
@@ -135,12 +135,7 @@ struct InputObjects {
 }
 
 fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
-    let test_file = ConfigFile {
-        schema: Schema {
-            schema_type: SchemaType::Enum,
-        },
-        rust_config: RustConfig::Enum(Type::BigInt),
-    };
+    let test_file = RustConfig {Enum {Type::BigInt}};
 
     let pretty_config = PrettyConfig::new()
         .depth_limit(5)
