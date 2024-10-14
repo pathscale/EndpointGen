@@ -68,33 +68,35 @@ struct Schema {
 fn process_file(file_path: &Path) -> eyre::Result<RustConfig> {
     match file_path.extension() {
         Some(extension) if extension == "ron" => {
-            let file_string: String = std::fs::read_to_string(file_path)?
-                .trim()
-                .chars()
-                .filter(|c| !c.is_whitespace())
-                .collect();
+            // let file_string: String = std::fs::read_to_string(file_path)?
+            //     .trim()
+            //     .chars()
+            //     .filter(|c| !c.is_whitespace())
+            //     .collect();
+
+            let file_string = std::fs::read_to_string(file_path)?.trim();
             println!("OPENED FILE, CONTENTS: {file_string}");
-            let config_file: ConfigFile = from_str(&file_string)?;
+            let config_file: ConfigFile = from_str(file_string)?;
 
             match config_file.schema.schema_type {
                 SchemaType::Service => {
-                    let service: Service = from_str(&file_string)?;
+                    let service: Service = from_str(file_string)?;
                     return Ok(RustConfig::Service(service));
                 }
                 SchemaType::Enum => {
-                    let enum_type: Type = from_str(&file_string)?;
+                    let enum_type: Type = from_str(file_string)?;
                     return Ok(RustConfig::Enum(enum_type));
                 }
                 SchemaType::EnumList => {
-                    let enums: Vec<Type> = from_str(&file_string)?;
+                    let enums: Vec<Type> = from_str(file_string)?;
                     return Ok(RustConfig::EnumList(enums));
                 }
                 SchemaType::EndpointSchema(service_name) => {
-                    let endpoint_schema: EndpointSchema = from_str(&file_string)?;
+                    let endpoint_schema: EndpointSchema = from_str(file_string)?;
                     return Ok(RustConfig::EndpointSchema(service_name, endpoint_schema));
                 }
                 SchemaType::EndpointSchemaList(service_name) => {
-                    let endpoint_schemas: Vec<EndpointSchema> = from_str(&file_string)?;
+                    let endpoint_schemas: Vec<EndpointSchema> = from_str(file_string)?;
                     return Ok(RustConfig::EndpointSchemaList(
                         service_name,
                         endpoint_schemas,
@@ -147,7 +149,7 @@ fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
         .extensions(Extensions::UNWRAP_NEWTYPES | Extensions::UNWRAP_VARIANT_NEWTYPES)
         .struct_names(true);
 
-    let test_ron_string = ron::ser::to_string(&test_file);
+    let test_ron_string = ron::ser::to_string_pretty(&test_file, pretty_config);
     std::fs::write("test_schema.ron", test_ron_string.unwrap());
 
     let rust_configs = process_input_files(dir)?;
