@@ -32,7 +32,7 @@ struct Cli {
 
     /// Output directory for the generated files
     #[arg(short, long)]
-    output: Option<String>,
+    output_dir: Option<String>,
 }
 
 pub struct Data {
@@ -150,7 +150,7 @@ fn main() -> Result<()> {
     let args = Cli::parse();
 
     let generation_root: PathBuf = {
-        if let Some(output_dir) = &args.output {
+        if let Some(output_dir) = &args.output_dir {
             PathBuf::from_str(output_dir)?
         } else {
             env::current_dir()?
