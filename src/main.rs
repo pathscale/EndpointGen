@@ -186,6 +186,7 @@ fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
     Ok(InputObjects { services, enums })
 }
 
+#[derive(Deserialize, Serialize)]
 struct ConfigFile {
     schema: Schema,
     rust_config: RustConfig,
