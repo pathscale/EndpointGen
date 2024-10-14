@@ -2,6 +2,6 @@
 
 ## To run
 
-- `cargo install --git https://github.com/pathscale/EndpointGen.git --branch binary_refactor endpoint-gen`
+- `cargo install --git https://github.com/pathscale/EndpointGen.git`, ideally latest tag
 
-- `endpoint-gen --service-file services.toml`
+- `endpoint-gen <optional>--config-dir CONFIG_DIR`
