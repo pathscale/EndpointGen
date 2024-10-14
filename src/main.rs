@@ -1,5 +1,7 @@
 use std::{
-    collections::HashMap, path::{Path, PathBuf}, str::FromStr
+    collections::HashMap,
+    path::{Path, PathBuf},
+    str::FromStr,
 };
 
 use clap::Parser;
@@ -7,9 +9,9 @@ use endpoint_libs::model::{EndpointSchema, Service, Type};
 use eyre::*;
 use ron::{extensions::Extensions, ser::PrettyConfig};
 use serde::{Deserialize, Serialize};
-use walkdir::WalkDir;
 use std::env;
 use std::result::Result::Ok;
+use walkdir::WalkDir;
 
 pub mod docs;
 pub mod rust;
@@ -57,7 +59,7 @@ enum SchemaType {
 }
 
 #[derive(Deserialize, Serialize)]
-struct RonSchema {
+struct Schema {
     schema_type: SchemaType,
 }
 
@@ -65,32 +67,37 @@ fn process_file(file_path: &Path) -> eyre::Result<RustConfig> {
     match file_path.extension() {
         Some(extension) if extension == "ron" => {
             let file_string = ron::to_string(&file_path)?;
-            let schema: RonSchema = ron::from_str(&file_string)?;
+            let schema: Schema = ron::from_str(&file_string)?;
 
             match schema.schema_type {
                 SchemaType::Service => {
                     let service: Service = ron::from_str(&file_string)?;
                     return Ok(RustConfig::Service(service));
-                },
+                }
                 SchemaType::Enum => {
                     let enum_type: Type = ron::from_str(&file_string)?;
                     return Ok(RustConfig::Enum(enum_type));
-                },
+                }
                 SchemaType::EnumList => {
                     let enums: Vec<Type> = ron::from_str(&file_string)?;
                     return Ok(RustConfig::EnumList(enums));
-                },
+                }
                 SchemaType::EndpointSchema(service_name) => {
                     let endpoint_schema: EndpointSchema = ron::from_str(&file_string)?;
                     return Ok(RustConfig::EndpointSchema(service_name, endpoint_schema));
-                },
+                }
                 SchemaType::EndpointSchemaList(service_name) => {
                     let endpoint_schemas: Vec<EndpointSchema> = ron::from_str(&file_string)?;
-                    return Ok(RustConfig::EndpointSchemaList(service_name, endpoint_schemas));
-                },
+                    return Ok(RustConfig::EndpointSchemaList(
+                        service_name,
+                        endpoint_schemas,
+                    ));
+                }
             }
-        },
-        _ => Err(eyre!("Non RON file OR file without extension in config dir ")),
+        }
+        _ => Err(eyre!(
+            "Non RON file OR file without extension in config dir "
+        )),
     }
 }
 
@@ -116,18 +123,22 @@ fn process_input_files(dir: PathBuf) -> eyre::Result<Vec<RustConfig>> {
 struct InputObjects {
     services: Vec<Service>,
     enums: Vec<Type>,
-} 
+}
 
 fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
-    let test_ron_schema = RonSchema {
+    let test_ron_schema = Schema {
         schema_type: SchemaType::EnumList,
     };
 
-    let pretty_config = PrettyConfig::new().depth_limit(5).compact_arrays(false).separate_tuple_members(true).extensions(Extensions::UNWRAP_NEWTYPES | Extensions::UNWRAP_VARIANT_NEWTYPES).struct_names(true);
+    let pretty_config = PrettyConfig::new()
+        .depth_limit(5)
+        .compact_arrays(false)
+        .separate_tuple_members(true)
+        .extensions(Extensions::UNWRAP_NEWTYPES | Extensions::UNWRAP_VARIANT_NEWTYPES)
+        .struct_names(true);
 
     let test_ron_string = ron::ser::to_string_pretty(&test_ron_schema, pretty_config);
     std::fs::write("test_schema.ron", test_ron_string.unwrap());
-
 
     let rust_configs = process_input_files(dir)?;
 
@@ -140,12 +151,14 @@ fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
     for config in rust_configs {
         match config {
             RustConfig::Service(service) => services.push(service),
-            RustConfig::EndpointSchema(service_name, endpoint_schema) => {
-                service_schema_map.entry(service_name).or_insert(vec![]).push(endpoint_schema)
-            },
-            RustConfig::EndpointSchemaList(service_name, endpoint_schemas) => {
-                service_schema_map.entry(service_name).or_insert(vec![]).extend(endpoint_schemas)
-            },
+            RustConfig::EndpointSchema(service_name, endpoint_schema) => service_schema_map
+                .entry(service_name)
+                .or_insert(vec![])
+                .push(endpoint_schema),
+            RustConfig::EndpointSchemaList(service_name, endpoint_schemas) => service_schema_map
+                .entry(service_name)
+                .or_insert(vec![])
+                .extend(endpoint_schemas),
             RustConfig::Enum(enum_type) => enums.push(enum_type),
             RustConfig::EnumList(enum_types) => enums.extend(enum_types),
         }
@@ -154,15 +167,16 @@ fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
     let mut service_num = 1;
     if !service_schema_map.is_empty() {
         for (service_name, endpoint_schemas) in service_schema_map {
-            services.push(Service::new(service_name, service_num.clone(), endpoint_schemas));
+            services.push(Service::new(
+                service_name,
+                service_num.clone(),
+                endpoint_schemas,
+            ));
             service_num += 1;
         }
     }
 
-    Ok(InputObjects {
-        services,
-        enums
-    })
+    Ok(InputObjects { services, enums })
 }
 
 fn main() -> Result<()> {
