@@ -45,8 +45,8 @@ pub struct Data {
 #[derive(Serialize, Deserialize)]
 enum Definition {
     Service(Service),
-    EndpointSchema(String, EndpointSchema),
-    EndpointSchemaList(String, Vec<EndpointSchema>),
+    EndpointSchema(String, u16, EndpointSchema),
+    EndpointSchemaList(String, u16, Vec<EndpointSchema>),
     Enum(Type),
     EnumList(Vec<Type>),
 }
@@ -56,8 +56,8 @@ enum SchemaType {
     Service,
     Enum,
     EnumList,
-    EndpointSchema(String),
-    EndpointSchemaList(String),
+    EndpointSchema(String, u16),
+    EndpointSchemaList(String, u16),
 }
 
 #[derive(Deserialize, Serialize)]
@@ -68,14 +68,7 @@ struct Schema {
 fn process_file(file_path: &Path) -> eyre::Result<Definition> {
     match file_path.extension() {
         Some(extension) if extension == "ron" => {
-            // let file_string: String = std::fs::read_to_string(file_path)?
-            //     .trim()
-            //     .chars()
-            //     .filter(|c| !c.is_whitespace())
-            //     .collect();
-
             let file_string = std::fs::read_to_string(file_path)?;
-            println!("OPENED FILE, CONTENTS: {file_string}");
             let config_file: Config = from_str(&file_string)?;
 
             return Ok(config_file.definition);
@@ -111,31 +104,9 @@ struct InputObjects {
 }
 
 fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
-    let test_file = Config {
-        definition: Definition::EndpointSchemaList(
-            String::from("service 1"),
-            vec![EndpointSchema::new(
-                "test",
-                123,
-                vec![Field::new("testinputfield", Type::BigInt)],
-                vec![Field::new("testreturnfield", Type::BigInt)],
-            )],
-        ),
-    };
-
-    let pretty_config = PrettyConfig::new()
-        .depth_limit(5)
-        .compact_arrays(false)
-        .separate_tuple_members(true)
-        .extensions(Extensions::UNWRAP_NEWTYPES | Extensions::UNWRAP_VARIANT_NEWTYPES)
-        .struct_names(true);
-
-    let test_ron_string = ron::ser::to_string_pretty(&test_file, pretty_config);
-    std::fs::write("test_schema.ron", test_ron_string.unwrap());
-
     let rust_configs = process_input_files(dir)?;
 
-    let mut service_schema_map: HashMap<String, Vec<EndpointSchema>> = HashMap::new();
+    let mut service_schema_map: HashMap<(String, u16), Vec<EndpointSchema>> = HashMap::new();
 
     let mut services: Vec<Service> = vec![];
 
@@ -144,12 +115,12 @@ fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
     for config in rust_configs {
         match config {
             Definition::Service(service) => services.push(service),
-            Definition::EndpointSchema(service_name, endpoint_schema) => service_schema_map
-                .entry(service_name)
+            Definition::EndpointSchema(service_name,service_id, endpoint_schema) => service_schema_map
+                .entry((service_name, service_id))
                 .or_insert(vec![])
                 .push(endpoint_schema),
-            Definition::EndpointSchemaList(service_name, endpoint_schemas) => service_schema_map
-                .entry(service_name)
+            Definition::EndpointSchemaList(service_name, service_id, endpoint_schemas) => service_schema_map
+                .entry((service_name, service_id))
                 .or_insert(vec![])
                 .extend(endpoint_schemas),
             Definition::Enum(enum_type) => enums.push(enum_type),
@@ -157,15 +128,13 @@ fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
         }
     }
 
-    let mut service_num = 1;
     if !service_schema_map.is_empty() {
-        for (service_name, endpoint_schemas) in service_schema_map {
+        for ((service_name, service_id), endpoint_schemas) in service_schema_map {
             services.push(Service::new(
                 service_name,
-                service_num.clone(),
+                service_id,
                 endpoint_schemas,
             ));
-            service_num += 1;
         }
     }
 

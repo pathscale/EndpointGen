@@ -1,0 +1,23 @@
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+Config(
+    definition: Service(
+        name: "service 1",
+        id: 12345,
+        endpoints: [
+            EndpointSchema(
+                name: "test",
+                code: 123,
+                parameters: [
+                    Field(name: "testinputfield", ty: BigInt),
+                ],
+                returns: [
+                    Field(name: "testreturnfield", ty: BigInt),
+                ],
+                stream_response: None,
+                description: "",
+                json_schema: (),
+            ),
+        ],
+    ),
+)
