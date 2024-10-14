@@ -42,6 +42,7 @@ pub struct Data {
     pub enums: Vec<Type>,
 }
 
+#[derive(Serialize, Deserialize)]
 enum RustConfig {
     Service(Service),
     EndpointSchema(String, EndpointSchema),
