@@ -53,3 +53,5 @@ tokio-util = "0.7.11"
 hyper-util = { version = "0.1.7", features = ["full"] }
 ron = "0.8"
 walkdir = "2.5"
+semver = "1.0"
+toml = "0.8"

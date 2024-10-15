@@ -1,13 +1,12 @@
 use std::{
-    collections::HashMap,
-    path::{Path, PathBuf},
-    str::FromStr,
+    collections::HashMap, fs, path::{Path, PathBuf}, str::FromStr
 };
 
 use clap::Parser;
 use endpoint_libs::model::{EndpointSchema, Field, Service, Type};
 use eyre::*;
 use ron::{de::from_reader, extensions::Extensions, from_str, ser::PrettyConfig};
+use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs::File;
@@ -96,7 +95,11 @@ fn process_input_files(dir: PathBuf) -> eyre::Result<Vec<Definition>> {
     for path in paths {
         match process_file(path.as_path()) {
             Ok(rust_config) => rust_configs.push(rust_config),
-            Err(err) => eprintln!("Error processing file: {path:?}, Error: {err}"),
+            Err(err) => match path.file_name() {
+                Some(name) if name.to_str().unwrap() == "version.toml" => (),
+                Some(_) => eprintln!("Error processing file: {path:?}, Error: {err}"),
+                None => (),
+            },
         }
     }
 
@@ -162,9 +165,39 @@ struct Config {
     definition: Definition,
 }
 
+#[derive(Debug, Deserialize)]
+struct VersionConfig {
+    binary: BinaryVersion,
+}
+
+#[derive(Debug, Deserialize)]
+struct BinaryVersion {
+    version: String,  // This will use semver version constraints
+}
+
+fn read_version_file(path: &Path) -> eyre::Result<VersionConfig> {
+    let content = fs::read_to_string(path)?;
+    let version_config: VersionConfig = toml::from_str(&content)?;
+    Ok(version_config)
+}
+
+fn check_compatibility(config_version: &str, version_constraint: &str) -> bool {
+    let config_version = Version::parse(config_version).unwrap();
+    
+    let version_req = VersionReq::parse(version_constraint).unwrap();
+
+    version_req.matches(&config_version)
+}
+
+fn get_crate_version() -> &'static str {
+    // Get the crate version from the Cargo.toml at compile time
+    env!("CARGO_PKG_VERSION")
+}
+
 fn main() -> Result<()> {
     let args = Cli::parse();
 
+    
     let generation_root: PathBuf = {
         if let Some(output_dir) = &args.output_dir {
             PathBuf::from_str(output_dir)?
@@ -172,7 +205,7 @@ fn main() -> Result<()> {
             env::current_dir()?
         }
     };
-
+    
     let config_dir = {
         if let Some(config_dir) = &args.config_dir {
             PathBuf::from_str(&config_dir)?
@@ -180,6 +213,13 @@ fn main() -> Result<()> {
             env::current_dir()?
         }
     };
+
+    let version_config = read_version_file(&config_dir.join("version.toml"))
+    .wrap_err("Error opening version.toml. Make sure it exists and is structured correctly")?;
+
+    if !check_compatibility(&get_crate_version(), &version_config.binary.version) {
+        return Err(eyre!("Version constraint not satisfied. Version: {} is specified in version.toml. Current binary version is: {}", &version_config.binary.version, &get_crate_version()));
+    }
 
     let output_dir = generation_root.join("generated");
 
