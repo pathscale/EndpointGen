@@ -1,6 +1,6 @@
-use endpoint_libs::model::{Service, Type};
 use crate::service::get_systemd_service;
 use crate::Data;
+use endpoint_libs::model::{Service, Type};
 use eyre::Context;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
