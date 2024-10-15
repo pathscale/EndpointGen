@@ -1,5 +1,8 @@
 use std::{
-    collections::HashMap, fs, path::{Path, PathBuf}, str::FromStr
+    collections::HashMap,
+    fs,
+    path::{Path, PathBuf},
+    str::FromStr,
 };
 
 use clap::Parser;
@@ -80,14 +83,14 @@ fn process_file(file_path: &Path) -> eyre::Result<Definition> {
 
 fn process_input_files(dir: PathBuf) -> eyre::Result<Vec<Definition>> {
     let root = dir.as_path();
-    
+
     // Walk through the directory and all subdirectories
     let mut paths: Vec<PathBuf> = WalkDir::new(root)
-    .into_iter()
-    .filter_map(|e| e.ok())  // Filter out any errors
-    .filter(|e| e.file_type().is_file()) // Only get files (not directories)
-    .map(|e| e.into_path())  // Convert DirEntry to PathBuf
-    .collect();
+        .into_iter()
+        .filter_map(|e| e.ok()) // Filter out any errors
+        .filter(|e| e.file_type().is_file()) // Only get files (not directories)
+        .map(|e| e.into_path()) // Convert DirEntry to PathBuf
+        .collect();
 
     paths.sort();
 
@@ -123,14 +126,18 @@ fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
     for config in rust_configs {
         match config {
             Definition::Service(service) => services.push(service),
-            Definition::EndpointSchema(service_name,service_id, endpoint_schema) => service_schema_map
-                .entry((service_name, service_id))
-                .or_insert(vec![])
-                .push(endpoint_schema),
-            Definition::EndpointSchemaList(service_name, service_id, endpoint_schemas) => service_schema_map
-                .entry((service_name, service_id))
-                .or_insert(vec![])
-                .extend(endpoint_schemas),
+            Definition::EndpointSchema(service_name, service_id, endpoint_schema) => {
+                service_schema_map
+                    .entry((service_name, service_id))
+                    .or_insert(vec![])
+                    .push(endpoint_schema)
+            }
+            Definition::EndpointSchemaList(service_name, service_id, endpoint_schemas) => {
+                service_schema_map
+                    .entry((service_name, service_id))
+                    .or_insert(vec![])
+                    .extend(endpoint_schemas)
+            }
             Definition::Enum(enum_type) => enums.push(enum_type),
             Definition::EnumList(enum_types) => enums.extend(enum_types),
         }
@@ -138,21 +145,17 @@ fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
 
     if !service_schema_map.is_empty() {
         for ((service_name, service_id), endpoint_schemas) in service_schema_map {
-            services.push(Service::new(
-                service_name,
-                service_id,
-                endpoint_schemas,
-            ));
+            services.push(Service::new(service_name, service_id, endpoint_schemas));
         }
     }
 
     // Sort services by ID
-    services.sort_by(|a,b| a.id.cmp(&b.id));
+    services.sort_by(|a, b| a.id.cmp(&b.id));
 
     // Sort the endpoints of each service by their codes
-    services.iter_mut().for_each(
-        |service| service.endpoints.sort_by(|a,b| a.code.cmp(&b.code))
-    );
+    services
+        .iter_mut()
+        .for_each(|service| service.endpoints.sort_by(|a, b| a.code.cmp(&b.code)));
 
     // Sort enums by their default ordering
     enums.sort();
@@ -172,7 +175,7 @@ struct VersionConfig {
 
 #[derive(Debug, Deserialize)]
 struct BinaryVersion {
-    version: String,  // This will use semver version constraints
+    version: String, // This will use semver version constraints
 }
 
 fn read_version_file(path: &Path) -> eyre::Result<VersionConfig> {
@@ -183,7 +186,7 @@ fn read_version_file(path: &Path) -> eyre::Result<VersionConfig> {
 
 fn check_compatibility(config_version: &str, version_constraint: &str) -> bool {
     let config_version = Version::parse(config_version).unwrap();
-    
+
     let version_req = VersionReq::parse(version_constraint).unwrap();
 
     version_req.matches(&config_version)
@@ -197,7 +200,6 @@ fn get_crate_version() -> &'static str {
 fn main() -> Result<()> {
     let args = Cli::parse();
 
-    
     let generation_root: PathBuf = {
         if let Some(output_dir) = &args.output_dir {
             PathBuf::from_str(output_dir)?
@@ -205,7 +207,7 @@ fn main() -> Result<()> {
             env::current_dir()?
         }
     };
-    
+
     let config_dir = {
         if let Some(config_dir) = &args.config_dir {
             PathBuf::from_str(&config_dir)?
@@ -215,7 +217,7 @@ fn main() -> Result<()> {
     };
 
     let version_config = read_version_file(&config_dir.join("version.toml"))
-    .wrap_err("Error opening version.toml. Make sure it exists and is structured correctly")?;
+        .wrap_err("Error opening version.toml. Make sure it exists and is structured correctly")?;
 
     if !check_compatibility(&get_crate_version(), &version_config.binary.version) {
         return Err(eyre!("Version constraint not satisfied. Version: {} is specified in version.toml. Current binary version is: {}", &version_config.binary.version, &get_crate_version()));
