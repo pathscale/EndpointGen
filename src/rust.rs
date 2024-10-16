@@ -195,12 +195,13 @@ pub fn gen_model_rs(data: &Data) -> eyre::Result<()> {
     let mut f = File::create(&db_filename)?;
     write!(
         &mut f,
-        "use num_derive::FromPrimitive;
-         use serde::*;
-         use strum_macros::{{Display, EnumString}};
-         use tokio_postgres::types::*;
-         use endpoint_gen::libs::ws::*;
-         use endpoint_gen::libs::error_code::ErrorCode;\n
+       "use endpoint_libs::libs::error_code::ErrorCode;
+        use endpoint_libs::libs::ws::*;
+        use endpoint_libs::libs::types::*;
+        use num_derive::FromPrimitive;
+        use serde::*;
+        use strum_macros::{{Display, EnumString}};
+        use tokio_postgres::types::*;\n
         "
     )?;
 
@@ -352,7 +353,7 @@ pub fn dump_endpoint_schema(data: &Data, mut writer: impl Write) -> eyre::Result
     let code = format!(
         r#"
     impl EnumEndpoint {{
-        pub fn schema(&self) -> ::endpoint_gen::model::EndpointSchema {{
+        pub fn schema(&self) -> endpoint_libs::model::EndpointSchema {{
             let schema = match self {{
                 {cases}
             }};

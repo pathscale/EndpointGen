@@ -6,13 +6,12 @@ use std::{
 };
 
 use clap::Parser;
-use endpoint_libs::model::{EndpointSchema, Field, Service, Type};
+use endpoint_libs::model::{EndpointSchema, Service, Type};
 use eyre::*;
-use ron::{de::from_reader, extensions::Extensions, from_str, ser::PrettyConfig};
+use ron::from_str;
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use std::env;
-use std::fs::File;
 use std::result::Result::Ok;
 use walkdir::WalkDir;
 
@@ -171,10 +170,18 @@ struct Config {
 #[derive(Debug, Deserialize)]
 struct VersionConfig {
     binary: BinaryVersion,
+    libs: LibsVersion,
 }
 
+/// The version of the binary that the config files require
 #[derive(Debug, Deserialize)]
 struct BinaryVersion {
+    version: String, // This will use semver version constraints
+}
+
+/// The version of endpoint-libs that the caller is using
+#[derive(Debug, Deserialize)]
+struct LibsVersion {
     version: String, // This will use semver version constraints
 }
 
@@ -184,12 +191,29 @@ fn read_version_file(path: &Path) -> eyre::Result<VersionConfig> {
     Ok(version_config)
 }
 
-fn check_compatibility(config_version: &str, version_constraint: &str) -> bool {
-    let config_version = Version::parse(config_version).unwrap();
+fn check_compatibility(
+    version_config: VersionConfig
+) -> eyre::Result<()> {
+    let current_crate_version = Version::parse(&get_crate_version()).unwrap();
 
-    let version_req = VersionReq::parse(version_constraint).unwrap();
+    let binary_version_req = VersionReq::parse(&version_config.binary.version).unwrap();
 
-    version_req.matches(&config_version)
+    // The version of endpoint-libs that we require to be used with this version of endpoint-gen
+    let libs_version_requirement = ">=1.0.3";
+
+    let libs_version_req = VersionReq::parse(libs_version_requirement).unwrap();
+
+    let caller_libs_version = Version::parse(&version_config.libs.version).unwrap();
+
+    if !binary_version_req.matches(&current_crate_version) {
+        return Err(eyre!("Binary version constraint not satisfied. Version: {} is specified in version.toml. Current binary version is: {}", 
+        &version_config.binary.version, &get_crate_version()));
+    } else if !libs_version_req.matches(&caller_libs_version) {
+        return Err(eyre!("endpoint-libs version constraint not satisfied. Version: {} is specified in version.toml. This version of endpoint-gen requires: {}", 
+        caller_libs_version, libs_version_requirement));
+    } else {
+        return Ok(());
+    }
 }
 
 fn get_crate_version() -> &'static str {
@@ -219,9 +243,7 @@ fn main() -> Result<()> {
     let version_config = read_version_file(&config_dir.join("version.toml"))
         .wrap_err("Error opening version.toml. Make sure it exists and is structured correctly")?;
 
-    if !check_compatibility(&get_crate_version(), &version_config.binary.version) {
-        return Err(eyre!("Version constraint not satisfied. Version: {} is specified in version.toml. Current binary version is: {}", &version_config.binary.version, &get_crate_version()));
-    }
+    check_compatibility(version_config)?;
 
     let output_dir = generation_root.join("generated");
 
