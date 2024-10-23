@@ -163,7 +163,6 @@ println!("Error Code: {:?}", error_code);
 
 ## Integration with `endpoint_libs` (TODO)
 TODO: Add detailed steps for integrating `endpoint_gen` with `endpoint_libs` once the refactoring of libraries is complete.
->>>>>>> Stashed changes
 
 Please ensure that a version.toml is placed in the config dir to specify the version requirements of the binary.
 The version adheres to the standard semver format
