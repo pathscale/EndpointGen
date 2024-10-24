@@ -30,8 +30,9 @@ Here’s the typical folder structure for working with `endpoint_gen`:
 ```
 project/
 ├── config/
-│   ├── test_schema.ron
-│   └── s1_endpoints.ron
+│   ├── latency.ron
+│    ├── types.conf
+│   └── version.toml
 ├── output/
 └── main.rs
 ```
@@ -112,10 +113,10 @@ impl From<EnumErrorCode> for ErrorCode {
 To generate the files from the RON configurations, use the following command:
 
 ```bash
-endpoint-gen --config-dir ./config --output-dir ./output
+endpoint-gen --config-dir ./config --output-dir ./output --identifier-dir ./config
 ```
 
-This command reads the `.ron` files from the `config/` directory and generates the output files in the `output/` directory.
+This command reads the `.ron` files and `.conf` file from the `config/` directory and generates the output files in the `output/` directory.
 
 ---
 

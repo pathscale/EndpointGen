@@ -1,0 +1,110 @@
+{
+  "enums": [],
+  "services": [
+    {
+      "endpoints": [
+        {
+          "code": 110,
+          "description": "",
+          "json_schema": null,
+          "name": "LatencyGet",
+          "parameters": [
+            {
+              "name": "exchange",
+              "ty": {
+                "Optional": "Int"
+              }
+            }
+          ],
+          "returns": [
+            {
+              "name": "latencies",
+              "ty": {
+                "DataTable": {
+                  "fields": [
+                    {
+                      "name": "exchange_id",
+                      "ty": "Int"
+                    },
+                    {
+                      "name": "measurement",
+                      "ty": {
+                        "Struct": {
+                          "fields": [
+                            {
+                              "name": "min",
+                              "ty": "Numeric"
+                            },
+                            {
+                              "name": "avg",
+                              "ty": "Numeric"
+                            },
+                            {
+                              "name": "max",
+                              "ty": "Numeric"
+                            }
+                          ],
+                          "name": "Measurement"
+                        }
+                      }
+                    }
+                  ],
+                  "name": "Latency"
+                }
+              }
+            }
+          ],
+          "stream_response": null
+        },
+        {
+          "code": 120,
+          "description": "",
+          "json_schema": null,
+          "name": "test1",
+          "parameters": [
+            {
+              "name": "test1",
+              "ty": {
+                "DataTable": {
+                  "fields": [
+                    {
+                      "name": "exchange_id",
+                      "ty": "Int"
+                    },
+                    {
+                      "name": "measurement",
+                      "ty": {
+                        "Struct": {
+                          "fields": [
+                            {
+                              "name": "min",
+                              "ty": "Numeric"
+                            },
+                            {
+                              "name": "avg",
+                              "ty": "Numeric"
+                            },
+                            {
+                              "name": "max",
+                              "ty": "Numeric"
+                            }
+                          ],
+                          "name": "Measurement"
+                        }
+                      }
+                    }
+                  ],
+                  "name": "Test1"
+                }
+              }
+            }
+          ],
+          "returns": [],
+          "stream_response": null
+        }
+      ],
+      "id": 1,
+      "name": "latency"
+    }
+  ]
+}
