@@ -52,40 +52,45 @@ impl ToRust for Type {
     fn to_rust_decl(&self, serde_with: bool) -> String {
         match self {
             Type::Struct { name, fields } => {
-                let mut fields = fields.iter().map(|x| {
-                    let opt = matches!(&x.ty, Type::Optional(_));
-                    let serde_with_opt = match &x.ty {
-                        Type::BlockchainDecimal => "rust_decimal::serde::str",
-                        Type::BlockchainAddress if serde_with => "WithBlockchainAddress",
-                        Type::BlockchainTransactionHash if serde_with => {
-                            "WithBlockchainTransactionHash"
-                        }
-                        // TODO: handle optional decimals
-                        // Type::Optional(t) if matches!(**t, Type::BlockchainDecimal) => {
-                        //     "WithBlockchainDecimal"
-                        // }
-                        // Type::Optional(t) if matches!(**t, Type::BlockchainAddress) => {
-                        //     "WithBlockchainAddress"
-                        // }
-                        // Type::Optional(t) if matches!(**t, Type::BlockchainTransactionHash) => {
-                        //     "WithBlockchainTransactionHash"
-                        // }
-                        _ => "",
-                    };
-                    format!(
-                        "{} {} pub {}: {}",
-                        if opt { "#[serde(default)]" } else { "" },
-                        if serde_with_opt.is_empty() {
-                            "".to_string()
-                        } else {
-                            format!("#[serde(with = \"{}\")]", serde_with_opt)
-                        },
-                        x.name,
-                        x.ty.to_rust_ref(serde_with)
-                    )
-                });
-                format!("pub struct {} {{{}}}", name, fields.join(","))
+                if fields.is_empty() {
+                    format!("pub struct {};", name)
+                } else {
+                    let mut fields = fields.iter().map(|x| {
+                        let opt = matches!(&x.ty, Type::Optional(_));
+                        let serde_with_opt = match &x.ty {
+                            Type::BlockchainDecimal => "rust_decimal::serde::str",
+                            Type::BlockchainAddress if serde_with => "WithBlockchainAddress",
+                            Type::BlockchainTransactionHash if serde_with => {
+                                "WithBlockchainTransactionHash"
+                            }
+                            // TODO: handle optional decimals
+                            // Type::Optional(t) if matches!(**t, Type::BlockchainDecimal) => {
+                            //     "WithBlockchainDecimal"
+                            // }
+                            // Type::Optional(t) if matches!(**t, Type::BlockchainAddress) => {
+                            //     "WithBlockchainAddress"
+                            // }
+                            // Type::Optional(t) if matches!(**t, Type::BlockchainTransactionHash) => {
+                            //     "WithBlockchainTransactionHash"
+                            // }
+                            _ => "",
+                        };
+                        format!(
+                            "{} {} pub {}: {}",
+                            if opt { "#[serde(default)]" } else { "" },
+                            if serde_with_opt.is_empty() {
+                                "".to_string()
+                            } else {
+                                format!("#[serde(with = \"{}\")]", serde_with_opt)
+                            },
+                            x.name,
+                            x.ty.to_rust_ref(serde_with)
+                        )
+                    });
+                    format!("pub struct {} {{{}}}", name, fields.join(","))
+                }
             }
+            
             Type::Enum {
                 name,
                 variants: fields,

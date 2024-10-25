@@ -1,0 +1,44 @@
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+Config(
+    definition: EndpointSchemaList (
+        "latency",
+        1,
+        [
+            EndpointSchema(
+                name: "LatencyGet",
+                code: 110,
+                parameters: [
+                    Field(
+                        name: "exchange",
+                        ty: Optional(Int),
+                    ),
+                ],
+                returns: [
+                    Field(
+                        name: "latencies",
+                        ty: "Latency",
+                    ),
+                ],
+                stream_response: None,
+                description: "",
+                json_schema: (),
+            ),
+            
+            EndpointSchema(
+                name: "test1",
+                code: 120,
+                parameters: [
+                    Field(
+                        name: "test1",
+                        ty: "test1",
+                    ),
+                ],
+                returns: [],
+                stream_response: None,
+                description: "",
+                json_schema: (),
+            ),
+        ]
+    )
+)

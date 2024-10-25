@@ -14,11 +14,14 @@ use serde::{Deserialize, Serialize};
 use std::env;
 use std::result::Result::Ok;
 use walkdir::WalkDir;
+use crate::type_registry::UserTypeRegistry;
+use regex::{Captures, Regex};
 
 pub mod docs;
 pub mod rust;
 pub mod service;
 pub mod sql;
+pub mod type_registry;
 
 /// A simple program to process service definitions from multiple TOML files
 #[derive(Parser, Debug)]
@@ -34,6 +37,10 @@ struct Cli {
     /// Output directory for the generated files
     #[arg(short, long)]
     output_dir: Option<String>,
+
+    /// Identifier file for the Datatable
+    #[arg(short, long)]
+    identifier_dir: Option<String>,
 }
 
 pub struct Data {
@@ -66,46 +73,98 @@ struct Schema {
     schema_type: SchemaType,
 }
 
-fn process_file(file_path: &Path) -> eyre::Result<Definition> {
+
+pub fn replace_latency_with_datatable(input: &str, replacement_array: &[String]) -> String {
+    let re = Regex::new(r#"ty:\s*"([^"]+)",\n"#).expect("Invalid regex pattern");
+
+    let mut replacement_index = 0;
+
+    let result = re.replace_all(input, |_: &Captures| {
+        if replacement_index < replacement_array.len() {
+            let replacement = replacement_array[replacement_index].clone();
+            replacement_index += 1; 
+            replacement
+        } else {
+            String::from("") 
+        }
+    });
+
+    result.to_string()
+}
+
+fn process_file(file_path: &Path, identifier_path: &Path) -> Result<Definition> {
+    // Ensure the identifier file has the correct extension
+    // println!("Identifier path: {:?}", identifier_path);
+    match identifier_path.extension().and_then(|ext| ext.to_str()) {
+        Some("conf") => (),
+        _ => return Err(eyre!("Identifier file must have a .conf extension")),
+    }
+
     match file_path.extension() {
         Some(extension) if extension == "ron" => {
-            let file_string = std::fs::read_to_string(file_path)?;
-            let config_file: Config = from_str(&file_string)?;
+            // Read the RON file content
+            let file_string = fs::read_to_string(file_path)?;
 
-            return Ok(config_file.definition);
+            // Check if the identifier .conf file exists
+            if !identifier_path.exists() {
+                println!("The RON file does not exist at: {:?}", identifier_path);
+                return Err(eyre!("Identifier .conf file not found at {:?}", identifier_path));
+            }
+
+            // Load the replacement array from the .conf file
+            let replacement_array =
+                UserTypeRegistry::from_ron_file(identifier_path.to_str().unwrap());
+
+            // Replace content in the RON file using the replacement array
+            let replaced_string = replace_latency_with_datatable(&file_string, &replacement_array);
+
+            println!("\nThe modified RON file content:\n{:?}", &replaced_string);
+
+            // Parse the modified content into a Config object
+            let config_file: Config = from_str(&replaced_string)?;
+
+            // Return the extracted Definition from the Config
+            Ok(config_file.definition)
         }
         _ => Err(eyre!(
-            "Non RON file OR file without extension in config dir "
+            "Non-RON file or file without extension in config directory"
         )),
     }
 }
 
-fn process_input_files(dir: PathBuf) -> eyre::Result<Vec<Definition>> {
-    let root = dir.as_path();
 
-    // Walk through the directory and all subdirectories
-    let mut paths: Vec<PathBuf> = WalkDir::new(root)
-        .into_iter()
-        .filter_map(|e| e.ok()) // Filter out any errors
-        .filter(|e| e.file_type().is_file()) // Only get files (not directories)
-        .map(|e| e.into_path()) // Convert DirEntry to PathBuf
-        .collect();
-
-    paths.sort();
+fn process_input_files(dir: PathBuf, identifier_dir: PathBuf) -> Result<Vec<Definition>> {
+    // Collect files from both directories
+    let dir_files = collect_files_from_dir(&dir)?;
+    let identifier_files = collect_files_from_dir(&identifier_dir)?;
 
     let mut rust_configs: Vec<Definition> = vec![];
-    for path in paths {
-        match process_file(path.as_path()) {
-            Ok(rust_config) => rust_configs.push(rust_config),
-            Err(err) => match path.file_name() {
-                Some(name) if name.to_str().unwrap() == "version.toml" => (),
-                Some(_) => eprintln!("Error processing file: {path:?}, Error: {err}"),
-                None => (),
-            },
+
+    // Process each combination of files from both directories
+    for dir_file in dir_files {
+        for identifier_file in &identifier_files {
+            match process_file(&dir_file, identifier_file) {
+                Ok(rust_config) => rust_configs.push(rust_config),
+                Err(err) => eprintln!(
+                    "Error processing dir file: {dir_file:?} with identifier file: {identifier_file:?}, Error: {err}"
+                ),
+            }
         }
     }
 
     Ok(rust_configs)
+}
+// Helper function to collect all files from a given directory and its subdirectories
+fn collect_files_from_dir(dir: &Path) -> Result<Vec<PathBuf>> {
+    let mut paths: Vec<PathBuf> = WalkDir::new(dir)
+        .into_iter()
+        .filter_map(|e| e.ok()) // Filter out errors during traversal
+        .filter(|e| e.file_type().is_file()) // Only collect files (not directories)
+        .map(|e| e.into_path()) // Convert DirEntry to PathBuf
+        .collect();
+
+    paths.sort();
+    Ok(paths)
 }
 
 struct InputObjects {
@@ -113,8 +172,8 @@ struct InputObjects {
     enums: Vec<Type>,
 }
 
-fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
-    let rust_configs = process_input_files(dir)?;
+fn build_object_lists(dir: PathBuf, identifier_dir: PathBuf) -> eyre::Result<InputObjects> {
+    let rust_configs = process_input_files(dir, identifier_dir)?;
 
     let mut service_schema_map: HashMap<(String, u16), Vec<EndpointSchema>> = HashMap::new();
 
@@ -240,6 +299,14 @@ fn main() -> Result<()> {
         }
     };
 
+    let identifier_dir = {
+        if let Some(identifier_dir) = &args.identifier_dir {
+            PathBuf::from_str(&identifier_dir)?
+        } else {
+            env::current_dir()?
+        }
+    };
+
     let version_config = read_version_file(&config_dir.join("version.toml"))
         .wrap_err("Error opening version.toml. Make sure it exists and is structured correctly")?;
 
@@ -247,7 +314,7 @@ fn main() -> Result<()> {
 
     let output_dir = generation_root.join("generated");
 
-    let input_objects = build_object_lists(config_dir)?;
+    let input_objects = build_object_lists(config_dir, identifier_dir)?;
 
     let data = Data {
         project_root: generation_root,
