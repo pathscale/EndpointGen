@@ -1,6 +1,10 @@
 # The version of the endpoint-gen binary that this project requires
 [binary]
+<<<<<<< Updated upstream
 version = "0.3"
+=======
+version = "0.4.1"
+>>>>>>> Stashed changes
 
 # The version of endpoint-libs that this project uses
 [libs]
