@@ -94,11 +94,9 @@ impl ToRust for Type {
                     format!(
                         r#"
     /// {}
-    #[postgres(name = "{}")]
     {} = {}
 "#,
                         x.comment,
-                        x.name,
                         if x.name.chars().last().unwrap().is_lowercase() {
                             x.name.to_case(Case::Pascal)
                         } else {
@@ -108,8 +106,7 @@ impl ToRust for Type {
                     )
                 });
                 format!(
-                    r#"#[derive(Debug, Clone, Copy, ToSql, FromSql, Serialize, Deserialize, FromPrimitive, PartialEq, Eq, PartialOrd, Ord, EnumString, Display, Hash)] #[postgres(name = "enum_{}")]pub enum Enum{} {{{}}}"#,
-                    name,
+                    r#"#[derive(Debug, Clone, Copy, ToSql, FromSql, Serialize, Deserialize, FromPrimitive, PartialEq, Eq, PartialOrd, Ord, EnumString, Display, Hash)]pub enum Enum{} {{{}}}"#,
                     name.to_case(Case::Pascal),
                     fields.join(",")
                 )
@@ -195,13 +192,12 @@ pub fn gen_model_rs(data: &Data) -> eyre::Result<()> {
     let mut f = File::create(&db_filename)?;
     write!(
         &mut f,
-       "use endpoint_libs::libs::error_code::ErrorCode;
+        "use endpoint_libs::libs::error_code::ErrorCode;
         use endpoint_libs::libs::ws::*;
         use endpoint_libs::libs::types::*;
         use num_derive::FromPrimitive;
         use serde::*;
         use strum_macros::{{Display, EnumString}};
-        use tokio_postgres::types::*;\n
         "
     )?;
 
