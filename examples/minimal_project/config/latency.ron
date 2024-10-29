@@ -1,0 +1,52 @@
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+Config(
+    definition: EndpointSchemaList (
+        "latency",
+        1,
+        [
+            EndpointSchema(
+                name: "LatencyGet",
+                code: 110,
+                parameters: [
+                    Field(
+                        name: "exchange",
+                        ty: Optional(Int),
+                    ),
+                ],
+                returns: [
+                    Field(
+                        name: "latencies",
+                        ty: "Latency",
+                    ),
+                ],
+                stream_response: None,
+                description: "",
+                json_schema: (),
+            ),
+            
+            EndpointSchema(
+                name: "LatencyAdd",
+                code: 120,
+                parameters: [
+                    Field(
+                        name: "latencies",
+                        ty: DataTable(
+                            name: "Latency",
+                            fields: [Field(name: "exchange_id", ty: Int), Field(name: "measurement",
+                                ty: Struct(
+                                    name: "Measurement",
+                                    fields: [Field(name: "min", ty: Numeric), Field(name: "avg", ty: Numeric), Field(name: "max", ty: Numeric)],
+                                )
+                            )],
+                        ),
+                    ),
+                ],
+                returns: [],
+                stream_response: None,
+                description: "",
+                json_schema: (),
+            ),
+        ]
+    )
+)
