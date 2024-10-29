@@ -1,0 +1,44 @@
+IdentifierConfig(
+    definition: [
+        Identifier(
+            name: "Latency_1",
+            identifier: "ty: DataTable(
+                            name: \"Latency_1\",
+                            fields: [
+                                Field(name: \"exchange_id\", ty: Int), 
+                                Field(
+                                    name: \"measurement\",
+                                    ty: Struct(
+                                        name: \"Measurement\",
+                                        fields: [
+                                            Field(name: \"min\", ty: Numeric), 
+                                            Field(name: \"avg\", ty: Numeric), 
+                                            Field(name: \"max\", ty: Numeric)
+                                        ],
+                                    )
+                                )
+                            ],
+                        ),",
+        ),
+        Identifier(
+            name: "Test1",
+            identifier: "ty: DataTable(
+                            name: \"Test1\",
+                            fields: [
+                                Field(name: \"exchange_id\", ty: Int), 
+                                Field(
+                                    name: \"measurement\",
+                                    ty: Struct(
+                                        name: \"Measurement\",
+                                        fields: [
+                                            Field(name: \"min\", ty: Numeric), 
+                                            Field(name: \"avg\", ty: Numeric), 
+                                            Field(name: \"max\", ty: Numeric)
+                                        ],
+                                    )
+                                )
+                            ],
+                        ),",
+        ),
+    ],
+)
