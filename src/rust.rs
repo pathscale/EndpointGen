@@ -1,4 +1,3 @@
-use crate::sql::{ToSql, PARAM_PREFIX};
 use crate::{docs, Data};
 use convert_case::{Case, Casing};
 use endpoint_libs::model::{EnumVariant, Field, ProceduralFunction, Type};
@@ -106,7 +105,7 @@ impl ToRust for Type {
                     )
                 });
                 format!(
-                    r#"#[derive(Debug, Clone, Copy, ToSql, FromSql, Serialize, Deserialize, FromPrimitive, PartialEq, Eq, PartialOrd, Ord, EnumString, Display, Hash)]pub enum Enum{} {{{}}}"#,
+                    r#"#[derive(Debug, Clone, Copy, Serialize, Deserialize, FromPrimitive, PartialEq, Eq, PartialOrd, Ord, EnumString, Display, Hash)]pub enum Enum{} {{{}}}"#,
                     name.to_case(Case::Pascal),
                     fields.join(",")
                 )
@@ -123,45 +122,45 @@ pub fn get_parameter_type(this: &ProceduralFunction) -> Type {
     )
 }
 
-pub fn pg_func_to_rust_trait_impl(this: &ProceduralFunction) -> String {
-    let mut arguments = this.parameters.iter().enumerate().map(|(i, x)| {
-        format!(
-            "{}{} => ${}::{}",
-            PARAM_PREFIX,
-            x.name,
-            i + 1,
-            x.ty.to_sql()
-        )
-    });
-    let sql = format!("SELECT * FROM api.{}({});", this.name, arguments.join(", "));
-    let pg_params = this
-        .parameters
-        .iter()
-        .map(|x| format!("&self.{} as &(dyn ToSql + Sync)", x.name))
-        .join(", ");
+// pub fn pg_func_to_rust_trait_impl(this: &ProceduralFunction) -> String {
+//     let mut arguments = this.parameters.iter().enumerate().map(|(i, x)| {
+//         format!(
+//             "{}{} => ${}::{}",
+//             PARAM_PREFIX,
+//             x.name,
+//             i + 1,
+//             x.ty.to_sql()
+//         )
+//     });
+//     let sql = format!("SELECT * FROM api.{}({});", this.name, arguments.join(", "));
+//     let pg_params = this
+//         .parameters
+//         .iter()
+//         .map(|x| format!("&self.{} as &(dyn ToSql + Sync)", x.name))
+//         .join(", ");
 
-    format!(
-        "
-        #[allow(unused_variables)]
-        impl DatabaseRequest for {name}Req {{
-          type ResponseRow = {ret_name};
-          fn statement(&self) -> &str {{
-            \"{sql}\"
-          }}
-          fn params(&self) -> Vec<&(dyn ToSql + Sync)> {{
-            vec![{pg_params}]
-          }}
-        }}
-",
-        name = this.name.to_case(Case::Pascal),
-        ret_name = match &this.return_row_type {
-            Type::Struct { name, .. } => name,
-            _ => unreachable!(),
-        },
-        sql = sql,
-        pg_params = pg_params,
-    )
-}
+//     format!(
+//         "
+//         #[allow(unused_variables)]
+//         impl DatabaseRequest for {name}Req {{
+//           type ResponseRow = {ret_name};
+//           fn statement(&self) -> &str {{
+//             \"{sql}\"
+//           }}
+//           fn params(&self) -> Vec<&(dyn ToSql + Sync)> {{
+//             vec![{pg_params}]
+//           }}
+//         }}
+// ",
+//         name = this.name.to_case(Case::Pascal),
+//         ret_name = match &this.return_row_type {
+//             Type::Struct { name, .. } => name,
+//             _ => unreachable!(),
+//         },
+//         sql = sql,
+//         pg_params = pg_params,
+//     )
+// }
 
 pub fn collect_rust_recursive_types(t: Type) -> Vec<Type> {
     match t {
