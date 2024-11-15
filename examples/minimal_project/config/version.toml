@@ -4,4 +4,4 @@ version = "0.4.1"
 
 # The version of endpoint-libs that this project uses
 [libs]
-version = "1.0.4" 
+version = "1.0.3" 
