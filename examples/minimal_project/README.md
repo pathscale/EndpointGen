@@ -2,7 +2,7 @@
 
 ## To run
 
-- `cargo install --git https://github.com/pathscale/EndpointGen.git --tag v0.3.0`, ideally latest tag
+- `cargo install --git https://github.com/pathscale/EndpointGen.git --tag v0.4.4`, ideally latest tag
 
 - `endpoint-gen <optional>--config-dir CONFIG_DIR <optional>--output-dir OUTPUT_DIR`
 

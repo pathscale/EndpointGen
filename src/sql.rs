@@ -83,30 +83,30 @@ $$;
     }
 }
 
-pub fn gen_model_sql(data: &Data) -> eyre::Result<()> {
-    let db_filename = data.project_root.join("db").join("model.sql");
+// pub fn gen_model_sql(data: &Data) -> eyre::Result<()> {
+//     let db_filename = data.project_root.join("db").join("model.sql");
 
-    // Ensure the parent directories exist
-    if let Some(parent) = db_filename.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
+//     // Ensure the parent directories exist
+//     if let Some(parent) = db_filename.parent() {
+//         std::fs::create_dir_all(parent)?;
+//     }
 
-    let mut f = File::create(db_filename)?;
+//     let mut f = File::create(db_filename)?;
 
-    for e in &data.enums {
-        match e {
-            Type::Enum { name, variants } => {
-                writeln!(
-                    &mut f,
-                    "CREATE TYPE enum_{} AS ENUM ({});",
-                    name,
-                    variants.iter().map(|x| format!("'{}'", x.name)).join(", ")
-                )?;
-            }
-            _ => unreachable!(),
-        }
-    }
-    f.flush()?;
-    drop(f);
-    Ok(())
-}
+//     for e in &data.enums {
+//         match e {
+//             Type::Enum { name, variants } => {
+//                 writeln!(
+//                     &mut f,
+//                     "CREATE TYPE enum_{} AS ENUM ({});",
+//                     name,
+//                     variants.iter().map(|x| format!("'{}'", x.name)).join(", ")
+//                 )?;
+//             }
+//             _ => unreachable!(),
+//         }
+//     }
+//     f.flush()?;
+//     drop(f);
+//     Ok(())
+// }

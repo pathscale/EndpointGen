@@ -2,7 +2,7 @@
 
 [package]
 name = "endpoint-gen"
-version = "0.4.3"
+version = "0.4.4"
 edition = "2021"
 repository = "https://github.com/pathscale/EndpointGen/"
 description = "Generate Rust code for websocket API endpoints"
