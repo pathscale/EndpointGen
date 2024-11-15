@@ -92,7 +92,7 @@ pub fn get_error_messages(root: &Path) -> eyre::Result<ErrorMessages> {
     }
 
     if !def_filename.exists() {
-        let _file = OpenOptions::new()
+        let mut file = OpenOptions::new()
             .create(true)
             .write(true)
             .open(&def_filename)?;
