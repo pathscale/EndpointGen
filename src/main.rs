@@ -259,7 +259,7 @@ fn main() -> Result<()> {
     docs::gen_services_docs(&data)?;
     docs::gen_md_docs(&data)?;
     rust::gen_model_rs(&data)?;
-    sql::gen_model_sql(&data)?;
+    // sql::gen_model_sql(&data)?;
     docs::gen_error_message_md(&data.project_root)?;
     Ok(())
 }
