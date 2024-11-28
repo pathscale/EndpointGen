@@ -11,10 +11,12 @@ use eyre::*;
 use ron::from_str;
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
+use tracing_appender::rolling::Rotation;
 use std::env;
 use std::result::Result::Ok;
 use walkdir::WalkDir;
-
+use regex::Regex;
+use regex::Captures;
 pub mod docs;
 pub mod rust;
 pub mod service;
@@ -43,6 +45,17 @@ pub struct Data {
     pub enums: Vec<Type>,
 }
 
+#[derive(Debug, Deserialize, Clone)]
+struct Identifier {
+    name: String,
+    identifier: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct IdentifierConfig {
+    definition: Vec<Identifier>,
+}
+
 #[derive(Serialize, Deserialize)]
 enum Definition {
     Service(Service),
@@ -66,21 +79,88 @@ struct Schema {
     schema_type: SchemaType,
 }
 
-fn process_file(file_path: &Path) -> eyre::Result<Definition> {
-    match file_path.extension() {
-        Some(extension) if extension == "ron" => {
-            let file_string = std::fs::read_to_string(file_path)?;
-            let config_file: Config = from_str(&file_string)?;
+fn process_file(file_path: &Path, identifiers: &[Identifier]) -> eyre::Result<Definition> {
+    let file_string = std::fs::read_to_string(file_path)
+        .wrap_err_with(|| format!("Failed to read file: {:?}", file_path))?;
 
-            return Ok(config_file.definition);
-        }
-        _ => Err(eyre!(
-            "Non RON file OR file without extension in config dir "
-        )),
+    if file_string
+        .lines()
+        .any(|line| line.trim_start().starts_with("IdentifierConfig"))
+    {
+        return Err(eyre!("File contains IdentifierConfig, skipping processing."));
     }
+
+    if file_path.extension().and_then(|ext| ext.to_str()) != Some("ron") {
+        return Err(eyre!("Non-RON file or file without correct extension."));
+    }
+
+    let replaced_string = replace_latency_with_identifiers(&file_string, identifiers);
+
+    let config_file: Config = from_str(&replaced_string)
+        .wrap_err_with(|| format!("Failed to parse RON content from file: {:?}", file_path))?;
+
+    Ok(config_file.definition)
 }
 
-fn process_input_files(dir: PathBuf) -> eyre::Result<Vec<Definition>> {
+pub fn replace_latency_with_identifiers(input: &str, identifiers: &[Identifier]) -> String {
+    let identifier_map: HashMap<&str, &str> = identifiers
+        .iter()
+        .map(|id| (id.name.as_str(), id.identifier.as_str()))
+        .collect();
+    
+    let re = Regex::new(r#"ty:\s*"([^"]+)","#).expect("Invalid regex pattern");
+
+    let result = re.replace_all(input, |captures: &Captures| {
+        let name = captures.get(1).map_or("", |m| m.as_str());
+
+        identifier_map.get(name).unwrap_or(&name).to_string()
+    });
+
+    result.to_string()
+}
+
+
+fn process_identifier_file(file_path: &Path) -> Result<Vec<Identifier>> {
+    let file_content = fs::read_to_string(file_path)
+        .wrap_err(format!("Failed to read file: {:?}", file_path))?;
+
+    let identifier_config: IdentifierConfig = from_str(&file_content)
+        .wrap_err(format!("Failed to parse RON from file: {:?}", file_path))?;
+
+    Ok(identifier_config.definition)
+}
+
+fn process_identifier_files(dir: &Path) -> Result<Vec<Identifier>> {
+    let mut identifiers = Vec::new();
+
+    let paths: Vec<PathBuf> = WalkDir::new(dir)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .map(|e| e.into_path())
+        .collect();
+
+    for path in paths {
+        if path.extension().map(|ext| ext == "ron").unwrap_or(false) {
+            let file_content = fs::read_to_string(&path)
+                .wrap_err(format!("Failed to read file: {:?}", &path))?;
+
+            if file_content
+                .lines()
+                .any(|line| line.trim_start().starts_with("IdentifierConfig"))
+            {
+                match process_identifier_file(&path) {
+                    Ok(identifier_list) => identifiers.extend(identifier_list),
+                    Err(err) => eprintln!("Error processing file: {path:?}, Error: {err}"),
+                }
+            }
+        }
+    }
+
+    Ok(identifiers)
+}
+
+fn process_input_files(dir: PathBuf, identifiers: Vec<Identifier>) -> eyre::Result<Vec<Definition>> {
     let root = dir.as_path();
 
     // Walk through the directory and all subdirectories
@@ -95,7 +175,7 @@ fn process_input_files(dir: PathBuf) -> eyre::Result<Vec<Definition>> {
 
     let mut rust_configs: Vec<Definition> = vec![];
     for path in paths {
-        match process_file(path.as_path()) {
+        match process_file(path.as_path(), &identifiers) {
             Ok(rust_config) => rust_configs.push(rust_config),
             Err(err) => match path.file_name() {
                 Some(name) if name.to_str().unwrap() == "version.toml" => (),
@@ -113,8 +193,8 @@ struct InputObjects {
     enums: Vec<Type>,
 }
 
-fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
-    let rust_configs = process_input_files(dir)?;
+fn build_object_lists(dir: PathBuf, identifiers: Vec<Identifier>) -> eyre::Result<InputObjects> {
+    let rust_configs = process_input_files(dir, identifiers)?;
 
     let mut service_schema_map: HashMap<(String, u16), Vec<EndpointSchema>> = HashMap::new();
 
@@ -247,7 +327,9 @@ fn main() -> Result<()> {
 
     let output_dir = generation_root.join("generated");
 
-    let input_objects = build_object_lists(config_dir)?;
+    let identifiers = process_identifier_files(&config_dir)?;
+
+    let input_objects = build_object_lists(config_dir, identifiers)?;
 
     let data = Data {
         project_root: generation_root,
