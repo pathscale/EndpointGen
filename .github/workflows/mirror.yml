@@ -10,7 +10,7 @@ on:
 jobs:
   git-sync:
     runs-on: ubuntu-latest
-    if: ${{ github.repository == 'TODOpathscale/EndpointGen' }}
+    if: ${{ github.repository == 'pathscale/EndpointGen' }}
     steps:
       - name: git-sync
         uses: wei/git-sync@v3
