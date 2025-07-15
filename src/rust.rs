@@ -25,7 +25,7 @@ impl ToRust for Type {
             Type::Struct { name, .. } => name.clone(),
             Type::StructRef(name) => name.clone(),
             Type::Object => "serde_json::Value".to_owned(),
-            Type::DataTable { name, .. } => format!("Vec<{}>", name),
+            Type::DataTable { name, .. } => format!("Vec<{name}>"),
             Type::Vec(ele) => {
                 format!("Vec<{}>", ele.to_rust_ref(serde_with))
             }
@@ -77,7 +77,7 @@ impl ToRust for Type {
                         if serde_with_opt.is_empty() {
                             "".to_string()
                         } else {
-                            format!("#[serde(with = \"{}\")]", serde_with_opt)
+                            format!("#[serde(with = \"{serde_with_opt}\")]")
                         },
                         x.name,
                         x.ty.to_rust_ref(serde_with)
@@ -375,6 +375,6 @@ pub fn dump_endpoint_schema(data: &Data, mut writer: impl Write) -> eyre::Result
     "#,
         cases = cases.join("\n")
     );
-    writeln!(writer, "{}", code)?;
+    writeln!(writer, "{code}")?;
     Ok(())
 }
