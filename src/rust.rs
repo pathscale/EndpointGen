@@ -283,11 +283,18 @@ impl From<EnumErrorCode> for ErrorCode {{
         )?;
     }
 
+    let mut all_endpoints = vec![];
     for s in &data.services {
         for endpoint in &s.endpoints {
-            write!(
-                &mut f,
-                "
+            all_endpoints.push(endpoint);
+        }
+    }
+    all_endpoints.sort_by(|a, b| a.code.cmp(&b.code));
+
+    for endpoint in all_endpoints {
+        write!(
+            &mut f,
+            "
 impl WsRequest for {end_name2}Request {{
     type Response = {end_name2}Response;
     const METHOD_ID: u32 = {code};
@@ -297,11 +304,10 @@ impl WsResponse for {end_name2}Response {{
     type Request = {end_name2}Request;
 }}
 ",
-                end_name2 = endpoint.name.to_case(Case::Pascal),
-                code = endpoint.code,
-                schema = serde_json::to_string_pretty(&endpoint).unwrap()
-            )?;
-        }
+            end_name2 = endpoint.name.to_case(Case::Pascal),
+            code = endpoint.code,
+            schema = serde_json::to_string_pretty(&endpoint).unwrap()
+        )?;
     }
     f.flush()?;
     drop(f);
@@ -330,21 +336,32 @@ pub fn check_endpoint_codes(data: &Data, mut writer: impl Write) -> eyre::Result
             variants.push(EnumVariant::new(e.name.clone(), e.code as _));
         }
     }
+
+    variants.sort_by(|a, b| a.value.cmp(&b.value));
+
     let enum_ = Type::enum_("Endpoint", variants);
     writeln!(writer, "{}", enum_.to_rust_decl(false))?;
     // if it compiles, there're no duplicate codes or names
     Ok(())
 }
 pub fn dump_endpoint_schema(data: &Data, mut writer: impl Write) -> eyre::Result<()> {
-    let mut cases = vec![];
+    let mut endpoint_cases = vec![];
     for s in &data.services {
         for e in &s.endpoints {
-            cases.push(format!(
-                "Self::{name} => {name}Request::SCHEMA,",
-                name = e.name.to_case(Case::Pascal),
+            endpoint_cases.push((
+                e.code,
+                format!(
+                    "Self::{name} => {name}Request::SCHEMA,",
+                    name = e.name.to_case(Case::Pascal),
+                ),
             ));
         }
     }
+
+    endpoint_cases.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let cases: Vec<String> = endpoint_cases.into_iter().map(|(_, case)| case).collect();
+
     let code = format!(
         r#"
     impl EnumEndpoint {{
