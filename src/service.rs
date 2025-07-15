@@ -1,3 +1,4 @@
+#[allow(clippy::all)]
 pub fn get_systemd_service(app_name: &str, service_name: &str, user: &str) -> String {
     format!(
         r#"[Unit]
