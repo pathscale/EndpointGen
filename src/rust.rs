@@ -3,7 +3,7 @@ use convert_case::{Case, Casing};
 use endpoint_libs::model::{EnumVariant, Field, ProceduralFunction, Type};
 use eyre::bail;
 use itertools::Itertools;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
@@ -285,12 +285,23 @@ impl From<EnumErrorCode> for ErrorCode {{
 
     for s in &data.services {
         for endpoint in &s.endpoints {
+            let roles_unique_ids = if let Some(roles) = &endpoint.roles {
+                let roles_list = resolve_roles_ids(roles, &data.enums)
+                    .into_iter()
+                    .map(|x| x.to_string())
+                    .join(", ");
+                format!("Some(&[{}])", roles_list)
+            } else {
+                "None".to_string()
+            };
+
             write!(
                 &mut f,
                 "
 impl WsRequest for {end_name2}Request {{
     type Response = {end_name2}Response;
     const METHOD_ID: u32 = {code};
+    const ROLES: Option<&[u32]> = {roles_unique_ids};
     const SCHEMA: &'static str = r#\"{schema}\"#;
 }}
 impl WsResponse for {end_name2}Response {{
@@ -308,6 +319,48 @@ impl WsResponse for {end_name2}Response {{
     rustfmt(&db_filename)?;
 
     Ok(())
+}
+
+/// Resolves the IDs of roles from a list of role names and a list of enum types.
+/// endpoint_roles: vec!["Role1::Value1", "Role1::Value2"]
+fn resolve_roles_ids(endpoint_roles: &Vec<String>, all_enums: &Vec<Type>) -> Vec<i64> {
+    let mut all_enums_typed: HashMap<String, Vec<EnumVariant>> = HashMap::new();
+    for e in all_enums {
+        if let Type::Enum { name, variants } = e {
+            all_enums_typed.insert(name.clone(), variants.clone());
+        }
+    }
+
+    let mut roles_ids = vec![];
+    for role in endpoint_roles {
+        let (role_enum_name, role_variant_name) =
+            role.split_once("::").unwrap_or_else(|| ("", role.as_str()));
+
+        if let Some(role_enum_variants) = all_enums_typed.get(role_enum_name) {
+            if let Some(role_variant_in_endpoint) = role_enum_variants
+                .iter()
+                .find(|v| v.name == role_variant_name)
+            {
+                roles_ids.push(role_variant_in_endpoint.value);
+            } else {
+                eprintln!(
+                    "Warning: Role variant '{}' not found in enum '{}'",
+                    role_variant_name, role_enum_name
+                );
+            }
+        } else {
+            eprintln!("Warning: Role enum '{}' not found", role_enum_name);
+        }
+    }
+    // check there is not duplicate roles ids and print error if there are
+    let mut roles_ids_set: BTreeSet<i64> = BTreeSet::new();
+    for id in &roles_ids {
+        if !roles_ids_set.insert(*id) {
+            eprintln!("Warning: Duplicate role ID found: {}", id);
+        }
+    }
+
+    roles_ids_set.into_iter().collect()
 }
 
 pub fn rustfmt(f: &Path) -> eyre::Result<()> {

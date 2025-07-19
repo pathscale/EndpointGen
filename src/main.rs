@@ -50,6 +50,7 @@ enum Definition {
     EndpointSchemaList(String, u16, Vec<EndpointSchema>),
     Enum(Type),
     EnumList(Vec<Type>),
+    RoleList(Vec<Type>),
 }
 
 #[derive(Deserialize, Serialize)]
@@ -139,6 +140,9 @@ fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
             }
             Definition::Enum(enum_type) => enums.push(enum_type),
             Definition::EnumList(enum_types) => enums.extend(enum_types),
+            Definition::RoleList(role_types) => {
+                enums.extend(role_types);
+            }
         }
     }
 
@@ -191,9 +195,7 @@ fn read_version_file(path: &Path) -> eyre::Result<VersionConfig> {
     Ok(version_config)
 }
 
-fn check_compatibility(
-    version_config: VersionConfig
-) -> eyre::Result<()> {
+fn check_compatibility(version_config: VersionConfig) -> eyre::Result<()> {
     let current_crate_version = Version::parse(&get_crate_version()).unwrap();
 
     let binary_version_req = VersionReq::parse(&version_config.binary.version).unwrap();
