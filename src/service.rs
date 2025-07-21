@@ -19,9 +19,6 @@ StandardInput=null
 [Install]
 WantedBy=default.target
 
-"#,
-        app_name = app_name,
-        service_name = service_name,
-        user = user
+"#
     )
 }

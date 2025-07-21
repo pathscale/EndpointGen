@@ -25,7 +25,7 @@ impl ToRust for Type {
             Type::Struct { name, .. } => name.clone(),
             Type::StructRef(name) => name.clone(),
             Type::Object => "serde_json::Value".to_owned(),
-            Type::DataTable { name, .. } => format!("Vec<{}>", name),
+            Type::DataTable { name, .. } => format!("Vec<{name}>"),
             Type::Vec(ele) => {
                 format!("Vec<{}>", ele.to_rust_ref(serde_with))
             }
@@ -77,7 +77,7 @@ impl ToRust for Type {
                         if serde_with_opt.is_empty() {
                             "".to_string()
                         } else {
-                            format!("#[serde(with = \"{}\")]", serde_with_opt)
+                            format!("#[serde(with = \"{serde_with_opt}\")]")
                         },
                         x.name,
                         x.ty.to_rust_ref(serde_with)
@@ -290,7 +290,7 @@ impl From<EnumErrorCode> for ErrorCode {{
                     .into_iter()
                     .map(|x| x.to_string())
                     .join(", ");
-                format!("Some(&[{}])", roles_list)
+                format!("Some(&[{roles_list}])")
             } else {
                 "None".to_string()
             };
@@ -334,7 +334,7 @@ fn resolve_roles_ids(endpoint_roles: &Vec<String>, all_enums: &Vec<Type>) -> Vec
     let mut roles_ids = vec![];
     for role in endpoint_roles {
         let (role_enum_name, role_variant_name) =
-            role.split_once("::").unwrap_or_else(|| ("", role.as_str()));
+            role.split_once("::").unwrap_or(("", role.as_str()));
 
         if let Some(role_enum_variants) = all_enums_typed.get(role_enum_name) {
             if let Some(role_variant_in_endpoint) = role_enum_variants
@@ -344,19 +344,18 @@ fn resolve_roles_ids(endpoint_roles: &Vec<String>, all_enums: &Vec<Type>) -> Vec
                 roles_ids.push(role_variant_in_endpoint.value);
             } else {
                 eprintln!(
-                    "Warning: Role variant '{}' not found in enum '{}'",
-                    role_variant_name, role_enum_name
+                    "Warning: Role variant '{role_variant_name}' not found in enum '{role_enum_name}'"
                 );
             }
         } else {
-            eprintln!("Warning: Role enum '{}' not found", role_enum_name);
+            eprintln!("Warning: Role enum '{role_enum_name}' not found");
         }
     }
     // check there is not duplicate roles ids and print error if there are
     let mut roles_ids_set: BTreeSet<i64> = BTreeSet::new();
     for id in &roles_ids {
         if !roles_ids_set.insert(*id) {
-            eprintln!("Warning: Duplicate role ID found: {}", id);
+            eprintln!("Warning: Duplicate role ID found: {id}");
         }
     }
 
@@ -411,6 +410,6 @@ pub fn dump_endpoint_schema(data: &Data, mut writer: impl Write) -> eyre::Result
     "#,
         cases = cases.join("\n")
     );
-    writeln!(writer, "{}", code)?;
+    writeln!(writer, "{code}")?;
     Ok(())
 }
