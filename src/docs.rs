@@ -70,12 +70,12 @@ pub fn gen_systemd_services(data: &Data, app_name: &str, user: &str) -> eyre::Re
     for srv in &data.services {
         let service_filename = data
             .project_root
-            .join(format!("etc"))
-            .join(format!("systemd"))
+            .join("etc")
+            .join("systemd")
             .join(format!("{}_{}.service", app_name, srv.name));
         let mut service_file = File::create(&service_filename)?;
         let v = get_systemd_service(app_name, &srv.name, user);
-        write!(&mut service_file, "{}", v)?;
+        write!(&mut service_file, "{v}")?;
     }
     Ok(())
 }
@@ -92,7 +92,7 @@ pub fn get_error_messages(root: &Path) -> eyre::Result<ErrorMessages> {
     }
 
     if !def_filename.exists() {
-        let mut file = OpenOptions::new()
+        let file = OpenOptions::new()
             .create(true)
             .write(true)
             .open(&def_filename)?;
@@ -102,7 +102,7 @@ pub fn get_error_messages(root: &Path) -> eyre::Result<ErrorMessages> {
     let def_file = std::fs::read(&def_filename)?;
 
     if def_file.is_empty() {
-        return Ok(ErrorMessages {
+        Ok(ErrorMessages {
             language: String::from("TODO"),
             codes: vec![ErrorMessage {
                 code: 0,
@@ -110,7 +110,7 @@ pub fn get_error_messages(root: &Path) -> eyre::Result<ErrorMessages> {
                 message: String::from("Please populate error_codes.json"),
                 source: String::from("None"),
             }],
-        });
+        })
     } else {
         let definitions: ErrorMessages = serde_json::from_slice(&def_file)?;
         Ok(definitions)
