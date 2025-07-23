@@ -17,6 +17,7 @@ Config(
                 stream_response: None,
                 description: "",
                 json_schema: (),
+                roles: ["UserRole::Superadmin", "UserRole::Support"],
             ),
         ],
     ),
