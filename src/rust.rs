@@ -285,15 +285,10 @@ impl From<EnumErrorCode> for ErrorCode {{
 
     for s in &data.services {
         for endpoint in &s.endpoints {
-            let roles_unique_ids = if let Some(roles) = &endpoint.roles {
-                let roles_list = resolve_roles_ids(roles, &data.enums)
-                    .into_iter()
-                    .map(|x| x.to_string())
-                    .join(", ");
-                format!("Some(&[{roles_list}])")
-            } else {
-                "None".to_string()
-            };
+            let roles_list = resolve_roles_ids(&endpoint.roles, &data.enums)
+                .into_iter()
+                .map(|x| x.to_string())
+                .join(", ");
 
             write!(
                 &mut f,
@@ -301,7 +296,7 @@ impl From<EnumErrorCode> for ErrorCode {{
 impl WsRequest for {end_name2}Request {{
     type Response = {end_name2}Response;
     const METHOD_ID: u32 = {code};
-    const ROLES: Option<&[u32]> = {roles_unique_ids};
+    const ROLES: &[u32] = &[{roles_list}];
     const SCHEMA: &'static str = r#\"{schema}\"#;
 }}
 impl WsResponse for {end_name2}Response {{
