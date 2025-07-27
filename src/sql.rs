@@ -1,8 +1,5 @@
-use crate::Data;
 use endpoint_libs::model::{ProceduralFunction, Type};
 use itertools::Itertools;
-use std::fs::File;
-use std::io::Write;
 
 pub const PARAM_PREFIX: &str = "a_";
 
@@ -24,7 +21,7 @@ impl ToSql for Type {
                     .map(|x| format!("\"{}\" {}", x.name, x.ty.to_sql()));
                 format!(
                     "table (\n{}\n)",
-                    fields.map(|x| format!("    {}", x)).join(",\n")
+                    fields.map(|x| format!("    {x}")).join(",\n")
                 )
             }
             Type::StructRef(_name) => "jsonb".to_owned(),
@@ -42,8 +39,8 @@ impl ToSql for Type {
             Type::Bytea => "bytea".to_owned(),
             Type::UUID => "uuid".to_owned(),
             Type::Inet => "inet".to_owned(),
-            Type::Enum { name, .. } => format!("enum_{}", name),
-            Type::EnumRef(name) => format!("enum_{}", name),
+            Type::Enum { name, .. } => format!("enum_{name}"),
+            Type::EnumRef(name) => format!("enum_{name}"),
             // 38 digits in total, with 4-18 decimal digits. So to be exact we need 38+18 digits
             Type::BlockchainDecimal => "decimal(56, 18)".to_owned(),
             Type::BlockchainAddress => "varchar".to_owned(),

@@ -44,6 +44,7 @@ Config(
             stream_response: None,
             description: "",
             json_schema: (),
+            roles: ["UserRole::Superadmin", "UserRole::Support"],
         ),
         EndpointSchema(
             name: "UserGetEvent1",
@@ -75,6 +76,7 @@ Config(
             stream_response: None,
             description: "",
             json_schema: (),
+            roles: ["UserRole::Superadmin", "UserRole::Support"],
         ),
         EndpointSchema(
             name: "UserGetDebugEvent1",
@@ -99,6 +101,7 @@ Config(
             stream_response: None,
             description: "",
             json_schema: (),
+            roles: ["UserRole::Superadmin", "UserRole::Support"],
         ),
         EndpointSchema(
             name: "UserGetOrder1",
@@ -129,6 +132,7 @@ Config(
             stream_response: None,
             description: "",
             json_schema: (),
+            roles: ["UserRole::Superadmin", "UserRole::Support"],
         ),
         EndpointSchema(
             name: "UserGetSignal1",
@@ -158,6 +162,7 @@ Config(
             stream_response: None,
             description: "",
             json_schema: (),
+            roles: ["UserRole::Superadmin", "UserRole::Support"],
         ),
         EndpointSchema(
             name: "UserGetBalance1",
@@ -175,6 +180,7 @@ Config(
             stream_response: None,
             description: "",
             json_schema: (),
+            roles: ["UserRole::Superadmin", "UserRole::Support"],
         ),
         EndpointSchema(
             name: "UserGetLivePosition1",
@@ -203,6 +209,7 @@ Config(
             stream_response: None,
             description: "",
             json_schema: (),
+            roles: ["UserRole::Superadmin", "UserRole::Support"],
         ),
         EndpointSchema(
             name: "UserSubLivePosition1",
@@ -245,6 +252,7 @@ Config(
             )),
             description: "",
             json_schema: (),
+            roles: ["UserRole::Superadmin", "UserRole::Support"],
         ),
         EndpointSchema(
             name: "UserGetS1Ledger",
@@ -280,6 +288,7 @@ Config(
             stream_response: None,
             description: "",
             json_schema: (),
+            roles: ["UserRole::Superadmin", "UserRole::Support"],
         ),
         EndpointSchema(
             name: "UserCancelOrClosePosition1",
@@ -294,6 +303,7 @@ Config(
             stream_response: None,
             description: "",
             json_schema: (),
+            roles: ["UserRole::Superadmin", "UserRole::Support"],
         ),
     ]
 	)
