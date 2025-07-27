@@ -50,6 +50,7 @@ enum Definition {
     EndpointSchemaList(String, u16, Vec<EndpointSchema>),
     Enum(Type),
     EnumList(Vec<Type>),
+    RoleList(Vec<Type>),
 }
 
 #[derive(Deserialize, Serialize)]
@@ -72,7 +73,7 @@ fn process_file(file_path: &Path) -> eyre::Result<Definition> {
             let file_string = std::fs::read_to_string(file_path)?;
             let config_file: Config = from_str(&file_string)?;
 
-            return Ok(config_file.definition);
+            Ok(config_file.definition)
         }
         _ => Err(eyre!(
             "Non RON file OR file without extension in config dir "
@@ -128,17 +129,20 @@ fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
             Definition::EndpointSchema(service_name, service_id, endpoint_schema) => {
                 service_schema_map
                     .entry((service_name, service_id))
-                    .or_insert(vec![])
+                    .or_default()
                     .push(endpoint_schema)
             }
             Definition::EndpointSchemaList(service_name, service_id, endpoint_schemas) => {
                 service_schema_map
                     .entry((service_name, service_id))
-                    .or_insert(vec![])
+                    .or_default()
                     .extend(endpoint_schemas)
             }
             Definition::Enum(enum_type) => enums.push(enum_type),
             Definition::EnumList(enum_types) => enums.extend(enum_types),
+            Definition::RoleList(role_types) => {
+                enums.extend(role_types);
+            }
         }
     }
 
@@ -191,10 +195,8 @@ fn read_version_file(path: &Path) -> eyre::Result<VersionConfig> {
     Ok(version_config)
 }
 
-fn check_compatibility(
-    version_config: VersionConfig
-) -> eyre::Result<()> {
-    let current_crate_version = Version::parse(&get_crate_version()).unwrap();
+fn check_compatibility(version_config: VersionConfig) -> eyre::Result<()> {
+    let current_crate_version = Version::parse(get_crate_version()).unwrap();
 
     let binary_version_req = VersionReq::parse(&version_config.binary.version).unwrap();
 
@@ -206,8 +208,8 @@ fn check_compatibility(
     let caller_libs_version = Version::parse(&version_config.libs.version).unwrap();
 
     if !binary_version_req.matches(&current_crate_version) {
-        return Err(eyre!("Binary version constraint not satisfied. Version: {} is specified in version.toml. Current binary version is: {}", 
-        &version_config.binary.version, &get_crate_version()));
+        Err(eyre!("Binary version constraint not satisfied. Version: {} is specified in version.toml. Current binary version is: {}", 
+        &version_config.binary.version, &get_crate_version()))
     } else if !libs_version_req.matches(&caller_libs_version) {
         return Err(eyre!("endpoint-libs version constraint not satisfied. Version: {} is specified in version.toml. This version of endpoint-gen requires: {}", 
         caller_libs_version, libs_version_requirement));
@@ -234,7 +236,7 @@ fn main() -> Result<()> {
 
     let config_dir = {
         if let Some(config_dir) = &args.config_dir {
-            PathBuf::from_str(&config_dir)?
+            PathBuf::from_str(config_dir)?
         } else {
             env::current_dir()?
         }

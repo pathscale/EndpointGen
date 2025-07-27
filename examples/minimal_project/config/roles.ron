@@ -1,0 +1,33 @@
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+Config(
+    definition: EnumList (
+        [
+            Enum(
+                name: "UserRole",
+                variants: [
+                    EnumVariant(
+                        name: "Superadmin",
+                        value: 1,
+                        comment: "Superadmin can do literally everything. Very dangerous role.",
+                    ),
+                    EnumVariant(
+                        name: "Support",
+                        value: 2,
+                        comment: "Support can view and manage some staff.",
+                    ),
+                    EnumVariant(
+                        name: "Viewer",
+                        value: 3,
+                        comment: "Viewer can only view some data.",
+                    ),
+                    EnumVariant(
+                        name: "Regular",
+                        value: 4,
+                        comment: "Viewer can only view some data.",
+                    ),
+                ],
+            ),
+        ]
+    )
+)
