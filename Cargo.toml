@@ -13,7 +13,7 @@ endpoint-libs-requirement = ">=1.1.2"
 
 [dependencies]
 # Internal dependencies
-endpoint-libs = "1.1.2"
+endpoint-libs = { git = "https://github.com/pathscale/endpoint-libs.git", rev = "5824581c5f75d20a35ddcbad930c80de15af0342", version = "1.1.4" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 eyre = "0.6"
