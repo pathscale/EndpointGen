@@ -95,7 +95,7 @@ impl ToRust for Type {
     /// {}
     {} = {}
 "#,
-                        x.comment,
+                        x.description,
                         if x.name.chars().last().unwrap().is_lowercase() {
                             x.name.to_case(Case::Pascal)
                         } else {
@@ -233,10 +233,10 @@ pub fn gen_model_rs(data: &Data) -> eyre::Result<()> {
             .codes
             .into_iter()
             .map(|x| {
-                EnumVariant::new_with_comment(
+                EnumVariant::new_with_description(
                     x.symbol.to_case(Case::Pascal),
-                    x.code,
                     format!("{} {}", x.source, x.message),
+                    x.code,
                 )
             })
             .collect(),
