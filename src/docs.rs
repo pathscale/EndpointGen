@@ -1,13 +1,15 @@
-use crate::service::get_systemd_service;
-use crate::Data;
-use endpoint_libs::model::{Service, Type};
-use eyre::Context;
-use itertools::Itertools;
-use serde::{Deserialize, Serialize};
-use serde_json::json;
 use std::fs::{create_dir_all, File, OpenOptions};
 use std::io::Write;
 use std::path::Path;
+
+use endpoint_libs::model::{Field, Service, Type};
+use eyre::Context;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+
+use crate::rust::ToRust;
+use crate::service::get_systemd_service;
+use crate::Data;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Docs {
@@ -42,25 +44,52 @@ pub fn gen_md_docs(data: &Data) -> eyre::Result<()> {
         writeln!(
             &mut docs_file,
             r#"
-# {} Server
-ID: {}
-## Endpoints
-|Method Code|Method Name|Parameters|Response|Description|
-|-----------|-----------|----------|--------|-----------|"#,
-            s.name, s.id
+# {name} Server ({id})
+## Endpoints"#,
+            name = s.name,
+            id = s.id
         )?;
+
         for e in &s.endpoints {
             writeln!(
                 &mut docs_file,
-                "|{}|{}|{}|{}|{}|",
-                e.code,
-                e.name,
-                e.parameters.iter().map(|x| x.name.to_string()).join(", "),
-                e.returns.iter().map(|x| x.name.to_string()).join(", "),
-                e.description
+                r#"
+### {name} ({code})
+
+{description}"#,
+                name = e.name,
+                code = e.code,
+                description = e.description
             )?;
+
+            gen_fields_table(&mut docs_file, "Parameters", &e.parameters)?;
+            gen_fields_table(&mut docs_file, "Returns", &e.returns)?;
         }
     }
+    Ok(())
+}
+
+fn gen_fields_table(docs_file: &mut File, header: &str, fields: &[Field]) -> eyre::Result<()> {
+    if fields.is_empty() {
+        return Ok(());
+    }
+
+    writeln!(
+        docs_file,
+        r#"
+#### {header}
+
+|Name|Type|Description|
+|----|----|-----------|"#
+    )?;
+    for field in fields {
+        writeln!(
+                    docs_file,
+                    "|{name}|`{type}``|{description}|",
+                    name = field.name, description = field.description,
+                    type = field.ty.to_rust_ref(true)                )?;
+    }
+
     Ok(())
 }
 
