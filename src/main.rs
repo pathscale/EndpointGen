@@ -53,6 +53,8 @@ enum Definition {
     RoleList(Vec<Type>),
 }
 
+// TODO: Check why is this unused
+#[allow(dead_code)]
 #[derive(Deserialize, Serialize)]
 enum SchemaType {
     Service,
@@ -62,6 +64,8 @@ enum SchemaType {
     EndpointSchemaList(String, u16),
 }
 
+// TODO: Check why is this unused
+#[allow(dead_code)]
 #[derive(Deserialize, Serialize)]
 struct Schema {
     schema_type: SchemaType,
@@ -211,10 +215,10 @@ fn check_compatibility(version_config: VersionConfig) -> eyre::Result<()> {
         Err(eyre!("Binary version constraint not satisfied. Version: {} is specified in version.toml. Current binary version is: {}", 
         &version_config.binary.version, &get_crate_version()))
     } else if !libs_version_req.matches(&caller_libs_version) {
-        return Err(eyre!("endpoint-libs version constraint not satisfied. Version: {} is specified in version.toml. This version of endpoint-gen requires: {}", 
-        caller_libs_version, libs_version_requirement));
+        Err(eyre!("endpoint-libs version constraint not satisfied. Version: {} is specified in version.toml. This version of endpoint-gen requires: {}",
+        caller_libs_version, libs_version_requirement))
     } else {
-        return Ok(());
+        Ok(())
     }
 }
 
