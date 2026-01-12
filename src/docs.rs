@@ -9,6 +9,8 @@ use std::fs::{create_dir_all, File, OpenOptions};
 use std::io::Write;
 use std::path::Path;
 
+// TODO: Check why is this unused
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 struct Docs {
     services: Vec<Service>,
