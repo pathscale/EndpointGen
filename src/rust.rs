@@ -49,6 +49,9 @@ impl ToRust for Type {
     }
 
     fn to_rust_decl(&self, serde_with: bool) -> String {
+        let code_regex =
+            regex::Regex::new(r"=\s*(\d+)").expect("Error building regex to extract endpoint code");
+
         match self {
             Type::Struct { name, fields } => {
                 let mut fields = fields.iter().map(|x| {
@@ -89,21 +92,63 @@ impl ToRust for Type {
                 name,
                 variants: fields,
             } => {
-                let mut fields = fields.iter().map(|x| {
-                    format!(
-                        r#"
+                let mut fields = fields
+                    .iter()
+                    .map(|x| {
+                        format!(
+                            r#"
     /// {}
     {} = {}
 "#,
-                        x.description,
-                        if x.name.chars().last().unwrap().is_lowercase() {
-                            x.name.to_case(Case::Pascal)
-                        } else {
-                            x.name.clone()
-                        },
-                        x.value
-                    )
-                });
+                            x.description,
+                            if x.name.chars().last().unwrap().is_lowercase() {
+                                x.name.to_case(Case::Pascal)
+                            } else {
+                                x.name.clone()
+                            },
+                            x.value
+                        )
+                    })
+                    .sorted_by(|a, b| {
+                        // Sort by the endpoint code
+                        let code_a = {
+                            match code_regex.captures(a) {
+                                Some(code) => code[1].parse::<u64>().unwrap_or_else(|err| {
+                                    eprintln!(
+                                        "Sorting error: {err}: Rust output may not be sorted correctly"
+                                    );
+                                    0
+                                }),
+                                None => {
+                                    eprintln!(
+                                        "Sorting error: Rust output may not be sorted correctly"
+                                    );
+                                    0
+                                }
+                            }
+                        };
+
+                        let code_b = {
+                            match code_regex.captures(b) {
+                                Some(code) => {
+                                    code[1].parse::<u64>().unwrap_or_else(|err| {
+                                        eprintln!(
+                                        "Sorting error: {err}: Rust output may not be sorted correctly"
+                                    );
+                                        0
+                                    })
+                                }
+                                None => {
+                                    eprintln!(
+                                        "Sorting error: Rust output may not be sorted correctly"
+                                    );
+                                    0
+                                }
+                            }
+                        };
+
+                        code_a.cmp(&code_b)
+                    });
                 format!(
                     r#"#[derive(Debug, Clone, Copy, Serialize, Deserialize, FromPrimitive, PartialEq, Eq, PartialOrd, Ord, EnumString, Display, Hash)]pub enum Enum{} {{{}}}"#,
                     name.to_case(Case::Pascal),
@@ -188,9 +233,9 @@ pub fn gen_model_rs(data: &Data) -> eyre::Result<()> {
         std::fs::create_dir_all(parent)?;
     }
 
-    let mut f = File::create(&db_filename)?;
+    let mut model_file = File::create(&db_filename)?;
     write!(
-        &mut f,
+        &mut model_file,
         "use endpoint_libs::libs::error_code::ErrorCode;
         use endpoint_libs::libs::ws::*;
         use endpoint_libs::libs::types::*;
@@ -201,10 +246,10 @@ pub fn gen_model_rs(data: &Data) -> eyre::Result<()> {
     )?;
 
     for e in &data.enums {
-        writeln!(&mut f, "{}", e.to_rust_decl(false))?;
+        writeln!(&mut model_file, "{}", e.to_rust_decl(false))?;
     }
-    check_endpoint_codes(data, &mut f)?;
-    dump_endpoint_schema(data, &mut f)?;
+    check_endpoint_codes(data, &mut model_file)?;
+    dump_endpoint_schema(data, &mut model_file)?;
 
     let errors = docs::get_error_messages(&data.project_root)?;
     let rule = regex::Regex::new(r"\{[\w]+}")?;
@@ -220,7 +265,7 @@ pub fn gen_model_rs(data: &Data) -> eyre::Result<()> {
                 .collect(),
         );
         writeln!(
-            &mut f,
+            &mut model_file,
             r#"#[derive(Serialize, Deserialize, Debug)]
                #[serde(rename_all = "camelCase")]
                {}"#,
@@ -241,9 +286,9 @@ pub fn gen_model_rs(data: &Data) -> eyre::Result<()> {
             })
             .collect(),
     );
-    writeln!(&mut f, "{}", enum_.to_rust_decl(false))?;
+    writeln!(&mut model_file, "{}", enum_.to_rust_decl(false))?;
     writeln!(
-        &mut f,
+        &mut model_file,
         r#"
 impl From<EnumErrorCode> for ErrorCode {{
     fn from(e: EnumErrorCode) -> Self {{
@@ -275,7 +320,7 @@ impl From<EnumErrorCode> for ErrorCode {{
     }
     for s in types {
         write!(
-            &mut f,
+            &mut model_file,
             r#"#[derive(Serialize, Deserialize, Debug, Clone)]
                     #[serde(rename_all = "camelCase")]
                     {}"#,
@@ -291,7 +336,7 @@ impl From<EnumErrorCode> for ErrorCode {{
                 .join(", ");
 
             write!(
-                &mut f,
+                &mut model_file,
                 "
 impl WsRequest for {end_name2}Request {{
     type Response = {end_name2}Response;
@@ -309,8 +354,8 @@ impl WsResponse for {end_name2}Response {{
             )?;
         }
     }
-    f.flush()?;
-    drop(f);
+    model_file.flush()?;
+    drop(model_file);
     rustfmt(&db_filename)?;
 
     Ok(())
@@ -407,4 +452,42 @@ pub fn dump_endpoint_schema(data: &Data, mut writer: impl Write) -> eyre::Result
     );
     writeln!(writer, "{code}")?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use regex::Regex;
+
+    #[test]
+    fn test_extract_number_from_error_code() {
+        let re = Regex::new(r"=\s*(\d+)").unwrap();
+
+        // Test with newline between number and comma
+        let text1 = r#"    /// 
+      LoginStep2 = 10003
+  ,"#;
+        let caps1 = re.captures(text1).expect("Should match");
+        let number1: u64 = caps1[1].parse().expect("Should parse as u64");
+        assert_eq!(number1, 10003);
+
+        // Test with spaces but no newline
+        let text2 = "Authorize = 10000,";
+        let caps2 = re.captures(text2).expect("Should match");
+        let number2: u64 = caps2[1].parse().expect("Should parse as u64");
+        assert_eq!(number2, 10000);
+
+        // Test with no spaces
+        let text3 = "SomeError=12345,";
+        let caps3 = re.captures(text3).expect("Should match");
+        let number3: u64 = caps3[1].parse().expect("Should parse as u64");
+        assert_eq!(number3, 12345);
+
+        // Test with multiple spaces
+        let text4 = r#"/// SQL R0019 UnauthorizedMessage
+    UnauthorizedMessage = 45349677
+, "#;
+        let caps4 = re.captures(text4).expect("Should match");
+        let number4: u64 = caps4[1].parse().expect("Should parse as u64");
+        assert_eq!(number4, 45349677);
+    }
 }
