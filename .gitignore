@@ -1,5 +1,4 @@
 target/
-Cargo.lock
 examples/minimal_project/gen/generated/*
 examples/minimal_project/db/*
 examples/minimal_project/docs/*
