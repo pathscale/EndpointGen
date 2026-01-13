@@ -129,7 +129,16 @@ fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
 
     for config in rust_configs {
         match config {
-            Definition::Service(service) => services.push(service),
+            Definition::Service(service) => {
+                if services.iter().any(|prev| prev.id == service.id) {
+                    return Err(eyre!(
+                        "Found duplicate ID: {}, for Service: {}",
+                        &service.id,
+                        &service.name
+                    ));
+                }
+                services.push(service)
+            }
             Definition::EndpointSchema(service_name, service_id, endpoint_schema) => {
                 service_schema_map
                     .entry((service_name, service_id))
