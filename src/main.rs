@@ -71,17 +71,15 @@ struct Schema {
     schema_type: SchemaType,
 }
 
-fn process_file(file_path: &Path) -> eyre::Result<Definition> {
+fn process_file(file_path: &Path) -> eyre::Result<Option<Definition>> {
     match file_path.extension() {
         Some(extension) if extension == "ron" => {
             let file_string = std::fs::read_to_string(file_path)?;
             let config_file: Config = from_str(&file_string)?;
 
-            Ok(config_file.definition)
+            Ok(Some(config_file.definition))
         }
-        _ => Err(eyre!(
-            "Non RON file OR file without extension in config dir "
-        )),
+        _ => Ok(None), // No extension or extension != .ron, safe to ignore
     }
 }
 
@@ -99,15 +97,26 @@ fn process_input_files(dir: PathBuf) -> eyre::Result<Vec<Definition>> {
     paths.sort();
 
     let mut rust_configs: Vec<Definition> = vec![];
+    let mut ron_files_counter = 0u32;
     for path in paths {
         match process_file(path.as_path()) {
-            Ok(rust_config) => rust_configs.push(rust_config),
+            Ok(rust_config) => {
+                if let Some(config) = rust_config {
+                    rust_configs.push(config);
+                    ron_files_counter += 1;
+                }
+            }
             Err(err) => match path.file_name() {
                 Some(name) if name.to_str().unwrap() == "version.toml" => (),
                 Some(_) => eprintln!("Error processing file: {path:?}, Error: {err}"),
                 None => (),
             },
         }
+    }
+
+    // If we haven't found any files, it's better to just return here immediately
+    if ron_files_counter == 0 {
+        bail!("No RON config files found in given path, aborting generation process");
     }
 
     Ok(rust_configs)
