@@ -1,6 +1,6 @@
 use crate::service::get_systemd_service;
 use crate::Data;
-use endpoint_libs::model::{Service, Type};
+use endpoint_libs::model::{EndpointSchema, Service};
 use eyre::Context;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -8,14 +8,6 @@ use serde_json::json;
 use std::fs::{create_dir_all, File, OpenOptions};
 use std::io::Write;
 use std::path::Path;
-
-// TODO: Check why is this unused
-#[allow(dead_code)]
-#[derive(Debug, Serialize, Deserialize)]
-struct Docs {
-    services: Vec<Service>,
-    enums: Vec<Type>,
-}
 
 pub fn gen_services_docs(docs: &Data) -> eyre::Result<()> {
     let docs_filename = docs.project_root.join("docs").join("services.json");
@@ -27,10 +19,28 @@ pub fn gen_services_docs(docs: &Data) -> eyre::Result<()> {
 
     let mut docs_file = File::create(&docs_filename)
         .with_context(|| format!("Failed to create docs file: {}", docs_filename.display()))?;
+
+    // Only write FE facing endpoints to the services.json file
+    let services = docs
+        .services
+        .clone()
+        .into_iter()
+        .map(|service| {
+            let fe_endpoints: Vec<EndpointSchema> = service
+                .endpoints
+                .into_iter()
+                .filter(|endpoint| endpoint.frontend_facing)
+                .collect();
+
+            Service::new(service.name, service.id, fe_endpoints)
+        })
+        .filter(|service| !service.endpoints.is_empty())
+        .collect::<Vec<Service>>();
+
     serde_json::to_writer_pretty(
         &mut docs_file,
         &json!({
-            "services": docs.services,
+            "services": services,
             "enums": docs.enums,
         }),
     )?;
@@ -47,19 +57,28 @@ pub fn gen_md_docs(data: &Data) -> eyre::Result<()> {
 # {} Server
 ID: {}
 ## Endpoints
-|Method Code|Method Name|Parameters|Response|Description|
-|-----------|-----------|----------|--------|-----------|"#,
+|Method Code|Method Name|Parameters|Response|Description| FE Facing |
+|-----------|-----------|----------|--------|-----------|-----------|"#,
             s.name, s.id
         )?;
         for e in &s.endpoints {
             writeln!(
                 &mut docs_file,
-                "|{}|{}|{}|{}|{}|",
-                e.code,
-                e.name,
-                e.parameters.iter().map(|x| x.name.to_string()).join(", "),
-                e.returns.iter().map(|x| x.name.to_string()).join(", "),
-                e.description
+                "|{}|{}|{}|{}|{}|{}|",
+                e.schema.code,
+                e.schema.name,
+                e.schema
+                    .parameters
+                    .iter()
+                    .map(|x| x.name.to_string())
+                    .join(", "),
+                e.schema
+                    .returns
+                    .iter()
+                    .map(|x| x.name.to_string())
+                    .join(", "),
+                e.schema.description,
+                e.frontend_facing,
             )?;
         }
     }

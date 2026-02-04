@@ -6,11 +6,13 @@ use std::{
 };
 
 use clap::Parser;
-use endpoint_libs::model::{EndpointSchema, Service, Type};
+use endpoint_libs::model::{EndpointSchema, Type};
 use eyre::*;
 use ron::from_str;
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
+use smart_default::SmartDefault;
+use smart_serde_default::smart_serde_default;
 use std::env;
 use std::result::Result::Ok;
 use walkdir::WalkDir;
@@ -39,36 +41,77 @@ struct Cli {
 pub struct Data {
     pub project_root: PathBuf,
     pub output_dir: PathBuf,
-    pub services: Vec<Service>,
+    pub services: Vec<GenService>,
     pub enums: Vec<Type>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct GenService {
+    pub name: String,
+    pub id: u16,
+    pub endpoints: Vec<EndpointSchemaElement>,
+}
+
+impl GenService {
+    pub fn new(name: String, id: u16, endpoints: Vec<EndpointSchemaElement>) -> Self {
+        Self {
+            name,
+            id,
+            endpoints,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct EndpointSchemaDefinition {
+    pub service_name: String,
+    pub service_id: u16,
+    pub schema: EndpointSchemaElement,
+}
+
+#[smart_serde_default]
+#[derive(Serialize, Deserialize, Clone, SmartDefault)]
+pub struct EndpointSchemaElement {
+    #[smart_default(true)]
+    pub frontend_facing: bool,
+    pub schema: EndpointSchema,
+}
+
+impl Into<EndpointSchema> for EndpointSchemaElement {
+    fn into(self) -> EndpointSchema {
+        EndpointSchema {
+            name: self.schema.name,
+            code: self.schema.code,
+            parameters: self.schema.parameters,
+            returns: self.schema.returns,
+            stream_response: self.schema.stream_response,
+            description: self.schema.description,
+            json_schema: self.schema.json_schema,
+            roles: self.schema.roles,
+        }
+    }
+}
+
+impl FromIterator<EndpointSchemaElement> for Vec<EndpointSchema> {
+    fn from_iter<T: IntoIterator<Item = EndpointSchemaElement>>(iter: T) -> Self {
+        iter.into_iter().map(|element| element.schema).collect()
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct EndpointSchemaListDefinition {
+    pub service_name: String,
+    pub service_id: u16,
+    pub endpoints: Vec<EndpointSchemaElement>,
 }
 
 #[derive(Serialize, Deserialize)]
 enum Definition {
-    Service(Service),
-    EndpointSchema(String, u16, EndpointSchema),
-    EndpointSchemaList(String, u16, Vec<EndpointSchema>),
+    EndpointSchema(EndpointSchemaDefinition),
+    EndpointSchemaList(EndpointSchemaListDefinition),
     Enum(Type),
     EnumList(Vec<Type>),
     RoleList(Vec<Type>),
-}
-
-// TODO: Check why is this unused
-#[allow(dead_code)]
-#[derive(Deserialize, Serialize)]
-enum SchemaType {
-    Service,
-    Enum,
-    EnumList,
-    EndpointSchema(String, u16),
-    EndpointSchemaList(String, u16),
-}
-
-// TODO: Check why is this unused
-#[allow(dead_code)]
-#[derive(Deserialize, Serialize)]
-struct Schema {
-    schema_type: SchemaType,
 }
 
 fn process_file(file_path: &Path) -> eyre::Result<Option<Definition>> {
@@ -123,34 +166,32 @@ fn process_input_files(dir: PathBuf) -> eyre::Result<Vec<Definition>> {
 }
 
 struct InputObjects {
-    services: Vec<Service>,
+    services: Vec<GenService>,
     enums: Vec<Type>,
 }
 
 fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
     let rust_configs = process_input_files(dir)?;
 
-    let mut service_schema_map: HashMap<(String, u16), Vec<EndpointSchema>> = HashMap::new();
+    let mut service_schema_map: HashMap<(String, u16), Vec<EndpointSchemaElement>> = HashMap::new();
 
-    let mut services: Vec<Service> = vec![];
+    let mut services: Vec<GenService> = vec![];
 
     let mut enums: Vec<Type> = vec![];
 
     for config in rust_configs {
         match config {
-            Definition::Service(service) => services.push(service),
-            Definition::EndpointSchema(service_name, service_id, endpoint_schema) => {
-                service_schema_map
-                    .entry((service_name, service_id))
-                    .or_default()
-                    .push(endpoint_schema)
-            }
-            Definition::EndpointSchemaList(service_name, service_id, endpoint_schemas) => {
-                service_schema_map
-                    .entry((service_name, service_id))
-                    .or_default()
-                    .extend(endpoint_schemas)
-            }
+            Definition::EndpointSchema(schema_definition) => service_schema_map
+                .entry((schema_definition.service_name, schema_definition.service_id))
+                .or_default()
+                .push(schema_definition.schema),
+            Definition::EndpointSchemaList(schema_list_definition) => service_schema_map
+                .entry((
+                    schema_list_definition.service_name,
+                    schema_list_definition.service_id,
+                ))
+                .or_default()
+                .extend(schema_list_definition.endpoints),
             Definition::Enum(enum_type) => enums.push(enum_type),
             Definition::EnumList(enum_types) => enums.extend(enum_types),
             Definition::RoleList(role_types) => {
@@ -161,7 +202,7 @@ fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
 
     if !service_schema_map.is_empty() {
         for ((service_name, service_id), endpoint_schemas) in service_schema_map {
-            services.push(Service::new(service_name, service_id, endpoint_schemas));
+            services.push(GenService::new(service_name, service_id, endpoint_schemas));
         }
     }
 
@@ -169,9 +210,11 @@ fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
     services.sort_by(|a, b| a.id.cmp(&b.id));
 
     // Sort the endpoints of each service by their codes
-    services
-        .iter_mut()
-        .for_each(|service| service.endpoints.sort_by(|a, b| a.code.cmp(&b.code)));
+    services.iter_mut().for_each(|service| {
+        service
+            .endpoints
+            .sort_by(|a, b| a.schema.code.cmp(&b.schema.code))
+    });
 
     // Sort enums by their default ordering
     enums.sort();
