@@ -301,13 +301,20 @@ impl From<EnumErrorCode> for ErrorCode {{
     let mut types = BTreeSet::new();
     for s in &data.services {
         for e in &s.endpoints {
-            let req = Type::struct_(format!("{}Request", e.name), e.parameters.clone());
-            let resp = Type::struct_(format!("{}Response", e.name), e.returns.clone());
+            let req = Type::struct_(
+                format!("{}Request", e.schema.name),
+                e.schema.parameters.clone(),
+            );
+            let resp = Type::struct_(
+                format!("{}Response", e.schema.name),
+                e.schema.returns.clone(),
+            );
             types.extend(
                 [
                     collect_rust_recursive_types(req),
                     collect_rust_recursive_types(resp),
-                    e.stream_response
+                    e.schema
+                        .stream_response
                         .clone()
                         .into_iter()
                         .flat_map(Type::try_unwrap)
@@ -330,7 +337,7 @@ impl From<EnumErrorCode> for ErrorCode {{
 
     for s in &data.services {
         for endpoint in &s.endpoints {
-            let roles_list = resolve_roles_ids(&endpoint.roles, &data.enums)
+            let roles_list = resolve_roles_ids(&endpoint.schema.roles, &data.enums)
                 .into_iter()
                 .map(|x| x.to_string())
                 .join(", ");
@@ -348,9 +355,9 @@ impl WsResponse for {end_name2}Response {{
     type Request = {end_name2}Request;
 }}
 ",
-                end_name2 = endpoint.name.to_case(Case::Pascal),
-                code = endpoint.code,
-                schema = serde_json::to_string_pretty(&endpoint).unwrap()
+                end_name2 = endpoint.schema.name.to_case(Case::Pascal),
+                code = endpoint.schema.code,
+                schema = serde_json::to_string_pretty(&endpoint.schema).unwrap()
             )?;
         }
     }
@@ -419,7 +426,7 @@ pub fn check_endpoint_codes(data: &Data, mut writer: impl Write) -> eyre::Result
     let mut variants = vec![];
     for s in &data.services {
         for e in &s.endpoints {
-            variants.push(EnumVariant::new(e.name.clone(), e.code as _));
+            variants.push(EnumVariant::new(e.schema.name.clone(), e.schema.code as _));
         }
     }
     let enum_ = Type::enum_("Endpoint", variants);
@@ -433,7 +440,7 @@ pub fn dump_endpoint_schema(data: &Data, mut writer: impl Write) -> eyre::Result
         for e in &s.endpoints {
             cases.push(format!(
                 "Self::{name} => {name}Request::SCHEMA,",
-                name = e.name.to_case(Case::Pascal),
+                name = e.schema.name.to_case(Case::Pascal),
             ));
         }
     }
