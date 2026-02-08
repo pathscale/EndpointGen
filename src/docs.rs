@@ -1,13 +1,21 @@
+use crate::definitions::{EnumElement, GenService, StructElement};
 use crate::service::get_systemd_service;
-use crate::Data;
-use endpoint_libs::model::{EndpointSchema, Service};
+use endpoint_libs::model::{EndpointSchema, Service, Type};
 use eyre::Context;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::fs::{create_dir_all, File, OpenOptions};
+use std::fs::{File, OpenOptions, create_dir_all};
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+pub struct Data {
+    pub project_root: PathBuf,
+    pub output_dir: PathBuf,
+    pub services: Vec<GenService>,
+    pub enums: Vec<EnumElement>,
+    pub structs: Vec<StructElement>,
+}
 
 pub fn gen_services_docs(docs: &Data) -> eyre::Result<()> {
     let docs_filename = docs.project_root.join("docs").join("services.json");
@@ -37,11 +45,26 @@ pub fn gen_services_docs(docs: &Data) -> eyre::Result<()> {
         .filter(|service| !service.endpoints.is_empty())
         .collect::<Vec<Service>>();
 
+    let enums: Vec<Type> = docs
+        .enums
+        .clone()
+        .into_iter()
+        .map(|enum_element| enum_element.inner)
+        .collect();
+
+    let structs: Vec<Type> = docs
+        .structs
+        .clone()
+        .into_iter()
+        .map(|struct_element| struct_element.inner)
+        .collect();
+
     serde_json::to_writer_pretty(
         &mut docs_file,
         &json!({
             "services": services,
-            "enums": docs.enums,
+            "enums": enums,
+            "structs": structs,
         }),
     )?;
     Ok(())

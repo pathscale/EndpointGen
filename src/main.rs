@@ -6,21 +6,18 @@ use std::{
 };
 
 use clap::Parser;
-use endpoint_libs::model::{EndpointSchema, Type};
+use endpoint_gen::{
+    definitions::{Definition, EndpointSchemaElement, EnumElement, GenService, StructElement},
+    docs::{self, Data},
+    rust,
+};
 use eyre::*;
 use ron::from_str;
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
-use smart_default::SmartDefault;
-use smart_serde_default::smart_serde_default;
 use std::env;
 use std::result::Result::Ok;
 use walkdir::WalkDir;
-
-pub mod docs;
-pub mod rust;
-pub mod service;
-pub mod sql;
 
 /// A simple program to process service definitions from multiple TOML files
 #[derive(Parser, Debug)]
@@ -38,80 +35,47 @@ struct Cli {
     output_dir: Option<String>,
 }
 
-pub struct Data {
-    pub project_root: PathBuf,
-    pub output_dir: PathBuf,
-    pub services: Vec<GenService>,
-    pub enums: Vec<Type>,
-}
+fn main() -> Result<()> {
+    let args = Cli::parse();
 
-#[derive(Serialize, Deserialize, Clone)]
-pub struct GenService {
-    pub name: String,
-    pub id: u16,
-    pub endpoints: Vec<EndpointSchemaElement>,
-}
-
-impl GenService {
-    pub fn new(name: String, id: u16, endpoints: Vec<EndpointSchemaElement>) -> Self {
-        Self {
-            name,
-            id,
-            endpoints,
+    let generation_root: PathBuf = {
+        if let Some(output_dir) = &args.output_dir {
+            PathBuf::from_str(output_dir)?
+        } else {
+            env::current_dir()?
         }
-    }
-}
+    };
 
-#[derive(Serialize, Deserialize)]
-pub struct EndpointSchemaDefinition {
-    pub service_name: String,
-    pub service_id: u16,
-    pub schema: EndpointSchemaElement,
-}
-
-#[smart_serde_default]
-#[derive(Serialize, Deserialize, Clone, SmartDefault)]
-pub struct EndpointSchemaElement {
-    #[smart_default(true)]
-    pub frontend_facing: bool,
-    pub schema: EndpointSchema,
-}
-
-impl Into<EndpointSchema> for EndpointSchemaElement {
-    fn into(self) -> EndpointSchema {
-        EndpointSchema {
-            name: self.schema.name,
-            code: self.schema.code,
-            parameters: self.schema.parameters,
-            returns: self.schema.returns,
-            stream_response: self.schema.stream_response,
-            description: self.schema.description,
-            json_schema: self.schema.json_schema,
-            roles: self.schema.roles,
+    let config_dir = {
+        if let Some(config_dir) = &args.config_dir {
+            PathBuf::from_str(config_dir)?
+        } else {
+            env::current_dir()?
         }
-    }
-}
+    };
 
-impl FromIterator<EndpointSchemaElement> for Vec<EndpointSchema> {
-    fn from_iter<T: IntoIterator<Item = EndpointSchemaElement>>(iter: T) -> Self {
-        iter.into_iter().map(|element| element.schema).collect()
-    }
-}
+    let version_config = read_version_file(&config_dir.join("version.toml"))
+        .wrap_err("Error opening version.toml. Make sure it exists and is structured correctly")?;
 
-#[derive(Serialize, Deserialize)]
-pub struct EndpointSchemaListDefinition {
-    pub service_name: String,
-    pub service_id: u16,
-    pub endpoints: Vec<EndpointSchemaElement>,
-}
+    check_compatibility(version_config)?;
 
-#[derive(Serialize, Deserialize)]
-enum Definition {
-    EndpointSchema(EndpointSchemaDefinition),
-    EndpointSchemaList(EndpointSchemaListDefinition),
-    Enum(Type),
-    EnumList(Vec<Type>),
-    RoleList(Vec<Type>),
+    let output_dir = generation_root.join("generated");
+
+    let input_objects = build_object_lists(config_dir)?;
+
+    let data = Data {
+        project_root: generation_root,
+        output_dir,
+        services: input_objects.services,
+        enums: input_objects.enums,
+        structs: input_objects.structs,
+    };
+
+    docs::gen_services_docs(&data)?;
+    docs::gen_md_docs(&data)?;
+    rust::gen_model_rs(&data)?;
+    docs::gen_error_message_md(&data.project_root)?;
+    Ok(())
 }
 
 fn process_file(file_path: &Path) -> eyre::Result<Option<Definition>> {
@@ -140,13 +104,13 @@ fn process_input_files(dir: PathBuf) -> eyre::Result<Vec<Definition>> {
     paths.sort();
 
     let mut rust_configs: Vec<Definition> = vec![];
-    let mut ron_files_counter = 0u32;
+    let mut valid_config_files_counter = 0u32;
     for path in paths {
         match process_file(path.as_path()) {
             Ok(rust_config) => {
                 if let Some(config) = rust_config {
                     rust_configs.push(config);
-                    ron_files_counter += 1;
+                    valid_config_files_counter += 1;
                 }
             }
             Err(err) => match path.file_name() {
@@ -158,8 +122,8 @@ fn process_input_files(dir: PathBuf) -> eyre::Result<Vec<Definition>> {
     }
 
     // If we haven't found any files, it's better to just return here immediately
-    if ron_files_counter == 0 {
-        bail!("No RON config files found in given path, aborting generation process");
+    if valid_config_files_counter == 0 {
+        bail!("No valid RON config files found in given path, aborting generation process");
     }
 
     Ok(rust_configs)
@@ -167,7 +131,8 @@ fn process_input_files(dir: PathBuf) -> eyre::Result<Vec<Definition>> {
 
 struct InputObjects {
     services: Vec<GenService>,
-    enums: Vec<Type>,
+    enums: Vec<EnumElement>,
+    structs: Vec<StructElement>,
 }
 
 fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
@@ -177,7 +142,8 @@ fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
 
     let mut services: Vec<GenService> = vec![];
 
-    let mut enums: Vec<Type> = vec![];
+    let mut enums: Vec<EnumElement> = vec![];
+    let mut structs: Vec<StructElement> = vec![];
 
     for config in rust_configs {
         match config {
@@ -194,9 +160,8 @@ fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
                 .extend(schema_list_definition.endpoints),
             Definition::Enum(enum_type) => enums.push(enum_type),
             Definition::EnumList(enum_types) => enums.extend(enum_types),
-            Definition::RoleList(role_types) => {
-                enums.extend(role_types);
-            }
+            Definition::Struct(struct_element) => structs.push(struct_element),
+            Definition::StructList(struct_elements) => structs.extend(struct_elements),
         }
     }
 
@@ -216,10 +181,15 @@ fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
             .sort_by(|a, b| a.schema.code.cmp(&b.schema.code))
     });
 
-    // Sort enums by their default ordering
+    // Sort enums and structs by their default ordering
     enums.sort();
+    structs.sort();
 
-    Ok(InputObjects { services, enums })
+    Ok(InputObjects {
+        services,
+        enums,
+        structs,
+    })
 }
 
 #[derive(Deserialize, Serialize)]
@@ -277,47 +247,4 @@ fn check_compatibility(version_config: VersionConfig) -> eyre::Result<()> {
 fn get_crate_version() -> &'static str {
     // Get the crate version from the Cargo.toml at compile time
     env!("CARGO_PKG_VERSION")
-}
-
-fn main() -> Result<()> {
-    let args = Cli::parse();
-
-    let generation_root: PathBuf = {
-        if let Some(output_dir) = &args.output_dir {
-            PathBuf::from_str(output_dir)?
-        } else {
-            env::current_dir()?
-        }
-    };
-
-    let config_dir = {
-        if let Some(config_dir) = &args.config_dir {
-            PathBuf::from_str(config_dir)?
-        } else {
-            env::current_dir()?
-        }
-    };
-
-    let version_config = read_version_file(&config_dir.join("version.toml"))
-        .wrap_err("Error opening version.toml. Make sure it exists and is structured correctly")?;
-
-    check_compatibility(version_config)?;
-
-    let output_dir = generation_root.join("generated");
-
-    let input_objects = build_object_lists(config_dir)?;
-
-    let data = Data {
-        project_root: generation_root,
-        output_dir,
-        services: input_objects.services,
-        enums: input_objects.enums,
-    };
-
-    docs::gen_services_docs(&data)?;
-    docs::gen_md_docs(&data)?;
-    rust::gen_model_rs(&data)?;
-    // sql::gen_model_sql(&data)?;
-    docs::gen_error_message_md(&data.project_root)?;
-    Ok(())
 }
