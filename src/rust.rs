@@ -1,6 +1,7 @@
-use crate::{docs, Data};
+use crate::definitions::EnumElement;
+use crate::docs::{self, Data};
 use convert_case::{Case, Casing};
-use endpoint_libs::model::{EnumVariant, Field, ProceduralFunction, Type};
+use endpoint_libs::model::{EnumVariant, Field, Type};
 use eyre::bail;
 use itertools::Itertools;
 use std::collections::{BTreeSet, HashMap};
@@ -12,6 +13,7 @@ use std::process::Command;
 pub trait ToRust {
     fn to_rust_ref(&self, serde_with: bool) -> String;
     fn to_rust_decl(&self, serde_with: bool) -> String;
+    fn add_derives(&self, input: String) -> String;
 }
 
 impl ToRust for Type {
@@ -39,7 +41,16 @@ impl ToRust for Type {
             Type::UUID => "uuid::Uuid".to_owned(),
             Type::Inet => "std::net::IpAddr".to_owned(),
             Type::Enum { name, .. } => format!("Enum{}", name.to_case(Case::Pascal),),
-            Type::EnumRef(name) => format!("Enum{}", name.to_case(Case::Pascal),),
+            Type::EnumRef {
+                name,
+                prefixed_name,
+            } => {
+                if *prefixed_name {
+                    format!("Enum{}", name.to_case(Case::Pascal),)
+                } else {
+                    name.to_case(Case::Pascal)
+                }
+            }
             Type::BlockchainDecimal => "Decimal".to_owned(),
             Type::BlockchainAddress if serde_with => "Address".to_owned(),
             Type::BlockchainTransactionHash if serde_with => "H256".to_owned(),
@@ -86,7 +97,9 @@ impl ToRust for Type {
                         x.ty.to_rust_ref(serde_with)
                     )
                 });
-                format!("pub struct {} {{{}}}", name, fields.join(","))
+                let input = format!("pub struct {} {{{}}}", name, fields.join(","));
+
+                self.add_derives(input)
             }
             Type::Enum {
                 name,
@@ -149,63 +162,26 @@ impl ToRust for Type {
 
                         code_a.cmp(&code_b)
                     });
-                format!(
-                    r#"#[derive(Debug, Clone, Copy, Serialize, Deserialize, FromPrimitive, PartialEq, Eq, PartialOrd, Ord, EnumString, Display, Hash)]pub enum Enum{} {{{}}}"#,
+                let enum_content = format!(
+                    r#"pub enum Enum{} {{{}}}"#,
                     name.to_case(Case::Pascal),
                     fields.join(",")
-                )
+                );
+
+                self.add_derives(enum_content)
             }
             x => x.to_rust_ref(serde_with),
         }
     }
+
+    fn add_derives(&self, input: String) -> String {
+        match self {
+            Self::Enum { .. } => Self::add_default_enum_derives(input),
+            Self::Struct { .. } => Self::add_default_struct_derives(input),
+            _ => input,
+        }
+    }
 }
-
-pub fn get_parameter_type(this: &ProceduralFunction) -> Type {
-    Type::struct_(
-        format!("{}Req", this.name.to_case(Case::Pascal)),
-        this.parameters.clone(),
-    )
-}
-
-// pub fn pg_func_to_rust_trait_impl(this: &ProceduralFunction) -> String {
-//     let mut arguments = this.parameters.iter().enumerate().map(|(i, x)| {
-//         format!(
-//             "{}{} => ${}::{}",
-//             PARAM_PREFIX,
-//             x.name,
-//             i + 1,
-//             x.ty.to_sql()
-//         )
-//     });
-//     let sql = format!("SELECT * FROM api.{}({});", this.name, arguments.join(", "));
-//     let pg_params = this
-//         .parameters
-//         .iter()
-//         .map(|x| format!("&self.{} as &(dyn ToSql + Sync)", x.name))
-//         .join(", ");
-
-//     format!(
-//         "
-//         #[allow(unused_variables)]
-//         impl DatabaseRequest for {name}Req {{
-//           type ResponseRow = {ret_name};
-//           fn statement(&self) -> &str {{
-//             \"{sql}\"
-//           }}
-//           fn params(&self) -> Vec<&(dyn ToSql + Sync)> {{
-//             vec![{pg_params}]
-//           }}
-//         }}
-// ",
-//         name = this.name.to_case(Case::Pascal),
-//         ret_name = match &this.return_row_type {
-//             Type::Struct { name, .. } => name,
-//             _ => unreachable!(),
-//         },
-//         sql = sql,
-//         pg_params = pg_params,
-//     )
-// }
 
 pub fn collect_rust_recursive_types(t: Type) -> Vec<Type> {
     match t {
@@ -233,6 +209,16 @@ pub fn gen_model_rs(data: &Data) -> eyre::Result<()> {
         std::fs::create_dir_all(parent)?;
     }
 
+    let worktable_imports = if data.enums.iter().any(|e| e.config.worktable_support)
+        || data.structs.iter().any(|s| s.config.worktable_support)
+    {
+        r#"use worktable::prelude::*;
+           use rkyv::Archive; 
+        "#
+    } else {
+        ""
+    };
+
     let mut model_file = File::create(&db_filename)?;
     write!(
         &mut model_file,
@@ -242,7 +228,8 @@ pub fn gen_model_rs(data: &Data) -> eyre::Result<()> {
         use num_derive::FromPrimitive;
         use serde::*;
         use strum_macros::{{Display, EnumString}};
-        "
+        {worktable_imports}
+        ",
     )?;
 
     for e in &data.enums {
@@ -264,13 +251,7 @@ pub fn gen_model_rs(data: &Data) -> eyre::Result<()> {
                 .map(|s| Field::new(s.to_string(), Type::String))
                 .collect(),
         );
-        writeln!(
-            &mut model_file,
-            r#"#[derive(Serialize, Deserialize, Debug)]
-               #[serde(rename_all = "camelCase")]
-               {}"#,
-            s.to_rust_decl(true)
-        )?;
+        writeln!(&mut model_file, "{}", s.to_rust_decl(true))?;
     }
     let enum_ = Type::enum_(
         "ErrorCode",
@@ -298,7 +279,7 @@ impl From<EnumErrorCode> for ErrorCode {{
     "#
     )?;
 
-    let mut types = BTreeSet::new();
+    let mut endpoint_reqres_types = BTreeSet::new();
     for s in &data.services {
         for e in &s.endpoints {
             let req = Type::struct_(
@@ -309,7 +290,7 @@ impl From<EnumErrorCode> for ErrorCode {{
                 format!("{}Response", e.schema.name),
                 e.schema.returns.clone(),
             );
-            types.extend(
+            endpoint_reqres_types.extend(
                 [
                     collect_rust_recursive_types(req),
                     collect_rust_recursive_types(resp),
@@ -325,14 +306,8 @@ impl From<EnumErrorCode> for ErrorCode {{
             );
         }
     }
-    for s in types {
-        write!(
-            &mut model_file,
-            r#"#[derive(Serialize, Deserialize, Debug, Clone)]
-                    #[serde(rename_all = "camelCase")]
-                    {}"#,
-            s.to_rust_decl(true)
-        )?;
+    for s in endpoint_reqres_types {
+        write!(&mut model_file, r#"{}"#, s.to_rust_decl(true))?;
     }
 
     for s in &data.services {
@@ -370,11 +345,11 @@ impl WsResponse for {end_name2}Response {{
 
 /// Resolves the IDs of roles from a list of role names and a list of enum types.
 /// endpoint_roles: vec!["Role1::Value1", "Role1::Value2"]
-fn resolve_roles_ids(endpoint_roles: &Vec<String>, all_enums: &Vec<Type>) -> Vec<i64> {
+fn resolve_roles_ids(endpoint_roles: &Vec<String>, all_enums: &Vec<EnumElement>) -> Vec<i64> {
     let mut all_enums_typed: HashMap<String, Vec<EnumVariant>> = HashMap::new();
     for e in all_enums {
-        if let Type::Enum { name, variants } = e {
-            all_enums_typed.insert(name.clone(), variants.clone());
+        if let Type::Enum { name: _, variants } = &e.inner {
+            all_enums_typed.insert(e.to_rust_ref(false), variants.clone());
         }
     }
 

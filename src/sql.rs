@@ -40,7 +40,7 @@ impl ToSql for Type {
             Type::UUID => "uuid".to_owned(),
             Type::Inet => "inet".to_owned(),
             Type::Enum { name, .. } => format!("enum_{name}"),
-            Type::EnumRef(name) => format!("enum_{name}"),
+            Type::EnumRef { name, .. } => format!("enum_{name}"),
             // 38 digits in total, with 4-18 decimal digits. So to be exact we need 38+18 digits
             Type::BlockchainDecimal => "decimal(56, 18)".to_owned(),
             Type::BlockchainAddress => "varchar".to_owned(),
