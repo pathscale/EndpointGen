@@ -6,3 +6,4 @@ examples/minimal_project/generated/*
 examples/minimal_project/config/db/*
 examples/minimal_project/config/docs/*
 examples/minimal_project/config/generated/*
+.vscode
