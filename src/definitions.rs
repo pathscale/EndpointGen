@@ -1,5 +1,6 @@
-use crate::{DefinitionVariant, rust::ToRust};
+use crate::rust::ToRust;
 use convert_case::{Case, Casing};
+use endpoint_gen_macros::DefinitionVariant;
 use endpoint_libs::model::{EndpointSchema, Type};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -8,7 +9,7 @@ use smart_serde_default::smart_serde_default;
 
 /// Marker trait for types that can be used as Definition variants
 /// All types used in Definition must implement this to ensure they are properly validatable
-pub trait DefinitionVariant: GenElement<Self> {}
+// pub trait DefinitionVariant: GenElement<Self> {}
 
 #[derive(Serialize, Deserialize)]
 pub enum Definition {

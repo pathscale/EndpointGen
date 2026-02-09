@@ -922,7 +922,7 @@ dependencies = [
 [[package]]
 name = "endpoint-libs"
 version = "1.3.0"
-source = "git+https://github.com/pathscale/endpoint-libs.git#da3f12b732d2a6015664e6cb3a8f2bf5b0c09d65"
+source = "git+https://github.com/pathscale/endpoint-libs.git#54384a55b01f39d3c3621e8eca3dc696939ca682"
 dependencies = [
  "alloy-primitives",
  "async-trait",
