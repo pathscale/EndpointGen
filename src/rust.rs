@@ -28,6 +28,7 @@ impl ToRust for Type {
             Type::StructRef(name) => name.clone(),
             Type::Object => "serde_json::Value".to_owned(),
             Type::DataTable { name, .. } => format!("Vec<{name}>"),
+            Type::StructTable { struct_ref } => format!("Vec<{struct_ref}>"),
             Type::Vec(ele) => {
                 format!("Vec<{}>", ele.to_rust_ref(serde_with))
             }
@@ -194,6 +195,9 @@ pub fn collect_rust_recursive_types(t: Type) -> Vec<Type> {
         }
         Type::DataTable { name, fields } => {
             collect_rust_recursive_types(Type::struct_(name, fields))
+        }
+        Type::StructTable { struct_ref } => {
+            collect_rust_recursive_types(Type::struct_ref(struct_ref))
         }
         Type::Vec(x) => collect_rust_recursive_types(*x),
         Type::Optional(x) => collect_rust_recursive_types(*x),
