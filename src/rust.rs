@@ -12,7 +12,7 @@ use std::process::Command;
 
 pub trait ToRust {
     fn to_rust_ref(&self, serde_with: bool) -> String;
-    fn to_rust_decl(&self, serde_with: bool) -> String;
+    fn to_rust_decl(&self, serde_with: bool, add_derives: bool) -> String;
     fn add_derives(&self, input: String) -> String;
 }
 
@@ -39,8 +39,8 @@ impl ToRust for Type {
             Type::Boolean => "bool".to_owned(),
             Type::String => "String".to_owned(),
             Type::Bytea => "Vec<u8>".to_owned(),
-            Type::UUID => "uuid::Uuid".to_owned(),
-            Type::Inet => "std::net::IpAddr".to_owned(),
+            Type::UUID => "Uuid".to_owned(),
+            Type::Inet => "IpAddr".to_owned(),
             Type::Enum { name, .. } => format!("Enum{}", name.to_case(Case::Pascal),),
             Type::EnumRef {
                 name,
@@ -60,7 +60,7 @@ impl ToRust for Type {
         }
     }
 
-    fn to_rust_decl(&self, serde_with: bool) -> String {
+    fn to_rust_decl(&self, serde_with: bool, add_derives: bool) -> String {
         let code_regex =
             regex::Regex::new(r"=\s*(\d+)").expect("Error building regex to extract endpoint code");
 
@@ -100,7 +100,11 @@ impl ToRust for Type {
                 });
                 let input = format!("pub struct {} {{{}}}", name, fields.join(","));
 
-                self.add_derives(input)
+                if add_derives {
+                    self.add_derives(input)
+                } else {
+                    input
+                }
             }
             Type::Enum {
                 name,
@@ -169,7 +173,11 @@ impl ToRust for Type {
                     fields.join(",")
                 );
 
-                self.add_derives(enum_content)
+                if add_derives {
+                    self.add_derives(enum_content)
+                } else {
+                    enum_content
+                }
             }
             x => x.to_rust_ref(serde_with),
         }
@@ -196,9 +204,9 @@ pub fn collect_rust_recursive_types(t: Type) -> Vec<Type> {
         Type::DataTable { name, fields } => {
             collect_rust_recursive_types(Type::struct_(name, fields))
         }
-        Type::StructTable { struct_ref } => {
-            collect_rust_recursive_types(Type::struct_ref(struct_ref))
-        }
+        // Type::StructTable { struct_ref } => {
+        //     collect_rust_recursive_types(Type::struct_ref(struct_ref))
+        // }
         Type::Vec(x) => collect_rust_recursive_types(*x),
         Type::Optional(x) => collect_rust_recursive_types(*x),
         _ => vec![],
@@ -232,12 +240,17 @@ pub fn gen_model_rs(data: &Data) -> eyre::Result<()> {
         use num_derive::FromPrimitive;
         use serde::*;
         use strum_macros::{{Display, EnumString}};
+        use uuid::Uuid;
+        use std::net::IpAddr;
         {worktable_imports}
         ",
     )?;
 
     for e in &data.enums {
-        writeln!(&mut model_file, "{}", e.to_rust_decl(false))?;
+        writeln!(&mut model_file, "{}", e.to_rust_decl(false, true))?;
+    }
+    for s in &data.structs {
+        writeln!(&mut model_file, "{}", s.to_rust_decl(false, true))?;
     }
     check_endpoint_codes(data, &mut model_file)?;
     dump_endpoint_schema(data, &mut model_file)?;
@@ -255,7 +268,7 @@ pub fn gen_model_rs(data: &Data) -> eyre::Result<()> {
                 .map(|s| Field::new(s.to_string(), Type::String))
                 .collect(),
         );
-        writeln!(&mut model_file, "{}", s.to_rust_decl(true))?;
+        writeln!(&mut model_file, "{}", s.to_rust_decl(true, true))?;
     }
     let enum_ = Type::enum_(
         "ErrorCode",
@@ -271,7 +284,7 @@ pub fn gen_model_rs(data: &Data) -> eyre::Result<()> {
             })
             .collect(),
     );
-    writeln!(&mut model_file, "{}", enum_.to_rust_decl(false))?;
+    writeln!(&mut model_file, "{}", enum_.to_rust_decl(false, true))?;
     writeln!(
         &mut model_file,
         r#"
@@ -311,7 +324,7 @@ impl From<EnumErrorCode> for ErrorCode {{
         }
     }
     for s in endpoint_reqres_types {
-        write!(&mut model_file, r#"{}"#, s.to_rust_decl(true))?;
+        write!(&mut model_file, r#"{}"#, s.to_rust_decl(true, true))?;
     }
 
     for s in &data.services {
@@ -409,7 +422,7 @@ pub fn check_endpoint_codes(data: &Data, mut writer: impl Write) -> eyre::Result
         }
     }
     let enum_ = Type::enum_("Endpoint", variants);
-    writeln!(writer, "{}", enum_.to_rust_decl(false))?;
+    writeln!(writer, "{}", enum_.to_rust_decl(false, true))?;
     // if it compiles, there're no duplicate codes or names
     Ok(())
 }

@@ -1,5 +1,7 @@
 use crate::definitions::{EnumElement, GenService, StructElement};
+use crate::rust::ToRust;
 use crate::service::get_systemd_service;
+use convert_case::{Case, Casing};
 use endpoint_libs::model::{EndpointSchema, Service, Type};
 use eyre::Context;
 use itertools::Itertools;
@@ -70,17 +72,108 @@ pub fn gen_services_docs(docs: &Data) -> eyre::Result<()> {
     Ok(())
 }
 
+/// Wraps ` ` around the given string
+fn wrap_code_md(value: String) -> String {
+    format!(r#"`{value}`"#)
+}
+
+fn format_type(name: &str, ty: &Type) -> String {
+    match ty {
+        Type::Struct { name, fields } => {
+            format!(
+                r#"{}{:#}"#,
+                name.to_case(Case::Pascal),
+                format!(
+                    "{{ {} }}",
+                    fields
+                        .iter()
+                        .map(|x| format!("{}: {}", x.name.to_string(), x.ty.to_rust_ref(false)))
+                        .join(", ")
+                )
+            ) 
+        }
+        Type::StructTable { struct_ref } => format!("Vec<{}>", struct_ref.to_case(Case::Pascal),) ,
+        Type::Enum { name, variants } => {
+            format!(
+                "{} {{ {} }}",
+                name.to_case(Case::Pascal),
+                variants.iter().map(|v| &v.name).join(", ")
+            ) 
+        }
+        Type::EnumRef {
+            name,
+            prefixed_name,
+        } => {
+            format!(
+                "{}",
+                prefixed_name
+                    .then(|| format!("Enum{}", name.to_case(Case::Pascal)))
+                    .unwrap_or(name.to_case(Case::Pascal))
+            ) 
+        }
+        Type::DataTable { name, fields } => {
+            format!(
+                "Vec<{}{:#}>",
+                name.to_case(Case::Pascal),
+                format!(
+                    "{{ {} }}",
+                    fields
+                        .iter()
+                        .map(|x| format!("{}: {}", x.name.to_string(), x.ty.to_rust_ref(false)))
+                        .join(", ")
+                )
+            ) 
+        }
+        _ => format!("{}: {}", name.to_string(), ty.to_rust_ref(false)) ,
+    }
+}
+
 pub fn gen_md_docs(data: &Data) -> eyre::Result<()> {
     let docs_filename = data.project_root.join("docs").join("README.md");
     let mut docs_file = File::create(docs_filename)?;
+    writeln!(
+        &mut docs_file,
+        r#"
+# API Reference
+
+## Structs/Datamodels
+
+```rust
+{}
+```
+---
+
+## Enums
+
+```rust
+{}
+```
+---
+
+        "#,
+        data.structs
+            .iter()
+            .map(|s| format!(
+                "struct {:#}\n",
+                format_type(&s.inner.to_rust_ref(false), &s.inner)
+            ))
+            .join("\n\n"),
+        data.enums
+            .iter()
+            .map(|e| format!(
+                "enum {:#}\n",
+                format_type(&e.inner.to_rust_ref(false), &e.inner)
+            ))
+            .join("\n\n")
+    )?;
     for s in &data.services {
         writeln!(
             &mut docs_file,
             r#"
-# {} Server
+## {} Server
 ID: {}
-## Endpoints
-|Method Code|Method Name|Parameters|Response|Description| FE Facing |
+### Endpoints
+|Code|Name|Parameters|Response|Description|FE Facing|
 |-----------|-----------|----------|--------|-----------|-----------|"#,
             s.name, s.id
         )?;
@@ -93,12 +186,12 @@ ID: {}
                 e.schema
                     .parameters
                     .iter()
-                    .map(|x| x.name.to_string())
+                    .map(|x| wrap_code_md(format_type(&x.name, &x.ty)))
                     .join(", "),
                 e.schema
                     .returns
                     .iter()
-                    .map(|x| x.name.to_string())
+                    .map(|x| wrap_code_md(format_type(&x.name, &x.ty)))
                     .join(", "),
                 e.schema.description,
                 e.frontend_facing,
