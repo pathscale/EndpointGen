@@ -89,7 +89,7 @@ impl ToRust for EnumElement {
         name
     }
 
-    fn to_rust_decl(&self, serde_with: bool) -> String {
+    fn to_rust_decl(&self, serde_with: bool, add_derives: bool) -> String {
         self.validate_element()
             .expect(&format!("EnumElement is invalid: {self:?}"));
 
@@ -164,7 +164,11 @@ impl ToRust for EnumElement {
                     fields.join(",")
                 );
 
-                self.add_derives(enum_content)
+                if add_derives {
+                    self.add_derives(enum_content)
+                } else {
+                    enum_content
+                }
             }
             _ => unreachable!(),
         }
@@ -232,7 +236,7 @@ impl ToRust for StructElement {
         }
     }
 
-    fn to_rust_decl(&self, serde_with: bool) -> String {
+    fn to_rust_decl(&self, serde_with: bool, add_derives: bool) -> String {
         self.validate_element()
             .expect(&format!("StructElement is invalid: {self:?}"));
 
@@ -273,38 +277,45 @@ impl ToRust for StructElement {
         });
         let input = format!("pub struct {} {{{}}}", name, fields.join(","));
 
-        self.add_derives(input)
+        if add_derives {
+            self.add_derives(input)
+        } else {
+            input
+        }
     }
 
     fn add_derives(&self, input: String) -> String {
         if self.config.worktable_support {
-            format!(
-                r#"#[derive(
-                        Clone,
-                        Copy,
-                        Debug,
-                        Default,
-                        Eq,
-                        Hash,
-                        Ord,
-                        PartialEq,
-                        PartialOrd,
-                        derive_more::Display,
-                        derive_more::From,
-                        derive_more::FromStr,
-                        derive_more::Into,
-                        MemStat,
-                        rkyv::Archive,
-                        SizeMeasure,
-                        rkyv::Deserialize,
-                        rkyv::Serialize,
-                        serde::Serialize,
-                        serde::Deserialize,
-                    )]
-                    #[rkyv(compare(PartialEq), derive(Debug, PartialOrd, PartialEq, Eq, Ord))]
-                    {input}
-                "#
-            )
+            // format!(
+            //     r#"#[derive(
+            //             Clone,
+            //             Copy,
+            //             Debug,
+            //             Default,
+            //             Eq,
+            //             Hash,
+            //             Ord,
+            //             PartialEq,
+            //             PartialOrd,
+            //             derive_more::Display,
+            //             derive_more::From,
+            //             derive_more::FromStr,
+            //             derive_more::Into,
+            //             MemStat,
+            //             rkyv::Archive,
+            //             SizeMeasure,
+            //             rkyv::Deserialize,
+            //             rkyv::Serialize,
+            //             serde::Serialize,
+            //             serde::Deserialize,
+            //             derive_more::Display,
+            //         )]
+            //         #[rkyv(compare(PartialEq), derive(Debug, PartialOrd, PartialEq, Eq, Ord))]
+            //         {input}
+            //     "#
+
+            // TODO: Fix worktable support for structs
+            Type::add_default_struct_derives(input)
         } else {
             Type::add_default_struct_derives(input)
         }
