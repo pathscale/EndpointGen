@@ -77,21 +77,35 @@ fn wrap_code_md(value: String) -> String {
     format!(r#"`{value}`"#)
 }
 
-fn format_type(field_name: &str, ty: &Type) -> String {
+fn format_type(field_name: &str, ty: &Type, datamodels: bool) -> String {
     match ty {
         Type::Struct { name, fields } => {
-            format!(
-                r#"{}: {}{:#}"#,
-                field_name.to_case(Case::Camel),
-                name.to_case(Case::Camel),
+            if !datamodels {
                 format!(
-                    "{{ {} }}",
-                    fields
-                        .iter()
-                        .map(|x| format!("{}: {}", x.name.to_string(), x.ty.to_rust_ref(false)))
-                        .join(", ")
+                    r#"{}: {}{:#}"#,
+                    field_name.to_case(Case::Camel),
+                    name.to_case(Case::Pascal),
+                    format!(
+                        "{{ {} }}",
+                        fields
+                            .iter()
+                            .map(|x| format!("{}: {}", x.name.to_string(), x.ty.to_rust_ref(false)))
+                            .join(", ")
+                    )
                 )
-            )
+            } else {
+                format!(
+                    r#"{}{:#}"#,
+                    name.to_case(Case::Pascal),
+                    format!(
+                        "{{ {} }}",
+                        fields
+                            .iter()
+                            .map(|x| format!("{}: {}", x.name.to_string(), x.ty.to_rust_ref(false)))
+                            .join(", ")
+                    )
+                )
+            }
         }
         Type::StructTable { struct_ref } => {
             format!(
@@ -119,24 +133,24 @@ fn format_type(field_name: &str, ty: &Type) -> String {
                     .unwrap_or(name.to_case(Case::Pascal))
             )
         }
-        Type::DataTable { name, fields } => {
-            format!(
-                "{}: Vec<{}{:#}>",
-                field_name.to_case(Case::Camel),
-                name.to_case(Case::Pascal),
-                format!(
-                    "{{ {} }}",
-                    fields
-                        .iter()
-                        .map(|x| format!(
-                            "{}: {}",
-                            x.name.to_case(Case::Camel),
-                            x.ty.to_rust_ref(false)
-                        ))
-                        .join(", ")
-                )
-            )
-        }
+        // Type::DataTable { name, fields } => {
+        //     format!(
+        //         "{}: Vec<{}{:#}>",
+        //         field_name.to_case(Case::Camel),
+        //         name.to_case(Case::Pascal),
+        //         format!(
+        //             "{{ {} }}",
+        //             fields
+        //                 .iter()
+        //                 .map(|x| format!(
+        //                     "{}: {}",
+        //                     x.name.to_case(Case::Camel),
+        //                     x.ty.to_rust_ref(false)
+        //                 ))
+        //                 .join(", ")
+        //         )
+        //     )
+        // }
         _ => format!(
             "{}: {}",
             field_name.to_case(Case::Camel),
@@ -172,14 +186,14 @@ pub fn gen_md_docs(data: &Data) -> eyre::Result<()> {
             .iter()
             .map(|s| format!(
                 "struct {:#}\n",
-                format_type(&s.inner.to_rust_ref(false), &s.inner)
+                format_type(&s.inner.to_rust_ref(false), &s.inner, true)
             ))
             .join("\n\n"),
         data.enums
             .iter()
             .map(|e| format!(
                 "enum {:#}\n",
-                format_type(&e.inner.to_rust_ref(false), &e.inner)
+                format_type(&e.inner.to_rust_ref(false), &e.inner, true)
             ))
             .join("\n\n")
     )?;
@@ -203,12 +217,12 @@ ID: {}
                 e.schema
                     .parameters
                     .iter()
-                    .map(|x| wrap_code_md(format_type(&x.name, &x.ty)))
+                    .map(|x| wrap_code_md(format_type(&x.name, &x.ty, false)))
                     .join(", "),
                 e.schema
                     .returns
                     .iter()
-                    .map(|x| wrap_code_md(format_type(&x.name, &x.ty)))
+                    .map(|x| wrap_code_md(format_type(&x.name, &x.ty, false)))
                     .join(", "),
                 e.schema.description,
                 e.frontend_facing,
