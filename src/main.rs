@@ -6,11 +6,13 @@ use std::{
 };
 
 use clap::Parser;
+use convert_case::{Case, Casing};
 use endpoint_gen::{
     definitions::{Definition, EndpointSchemaElement, EnumElement, GenService, StructElement},
     docs::{self, Data},
     rust,
 };
+use endpoint_libs::model::Type;
 use eyre::*;
 use ron::from_str;
 use semver::{Version, VersionReq};
@@ -71,11 +73,94 @@ fn main() -> Result<()> {
         structs: input_objects.structs,
     };
 
-    docs::gen_services_docs(&data)?;
-    docs::gen_md_docs(&data)?;
+    let docs_data = format_for_docs(&data);
+
+    docs::gen_services_docs(&docs_data)?;
+    docs::gen_md_docs(&docs_data)?;
     rust::gen_model_rs(&data)?;
     docs::gen_error_message_md(&data.project_root)?;
     Ok(())
+}
+
+/// Formats fields of endpoint input/return params and fields of structs from snake to camel case if enabled
+/// This allows us to still have snake case field names in our rust code, but FE facing docs can remain camel case
+/// We already use serde camelCase renaming, so this should have no effect on serializing/deserializing
+fn format_for_docs(data: &Data) -> Data {
+    let formatted_services = data
+        .services
+        .clone()
+        .into_iter()
+        .map(|mut gen_service| {
+            gen_service.endpoints = gen_service
+                .endpoints
+                .into_iter()
+                .map(|mut endpoint| {
+                    if endpoint.config.snake_case_fields {
+                        endpoint.schema.parameters = endpoint
+                            .schema
+                            .parameters
+                            .into_iter()
+                            .map(|mut param| {
+                                param.name = param.name.to_case(Case::Camel);
+
+                                param
+                            })
+                            .collect();
+
+                        endpoint.schema.returns = endpoint
+                            .schema
+                            .returns
+                            .into_iter()
+                            .map(|mut param| {
+                                param.name = param.name.to_case(Case::Camel);
+
+                                param
+                            })
+                            .collect();
+                    }
+                    endpoint
+                })
+                .collect();
+
+            gen_service
+        })
+        .collect();
+
+    let formatted_structs = data
+        .structs
+        .clone()
+        .into_iter()
+        .map(|mut struct_element| {
+            if struct_element.config.snake_case_fields {
+                struct_element.inner = match struct_element.inner {
+                    Type::Struct { name, fields } => Type::struct_(
+                        name,
+                        fields
+                            .into_iter()
+                            .map(|mut field| {
+                                field.name = field.name.to_case(Case::Camel);
+
+                                field
+                            })
+                            .collect(),
+                    ),
+                    _ => unreachable!(),
+                };
+
+                struct_element
+            } else {
+                struct_element
+            }
+        })
+        .collect();
+
+    Data {
+        project_root: data.project_root.clone(),
+        output_dir: data.output_dir.clone(),
+        services: formatted_services,
+        enums: data.enums.clone(),
+        structs: formatted_structs,
+    }
 }
 
 fn process_file(file_path: &Path) -> eyre::Result<Option<Definition>> {
@@ -157,11 +242,28 @@ fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
                     schema_list_definition.service_id,
                 ))
                 .or_default()
-                .extend(schema_list_definition.endpoints),
+                .extend(schema_list_definition.endpoints.into_iter().map(|mut ele| {
+                    if !ele.config.override_parent {
+                        ele.config = schema_list_definition.config.clone();
+                    }
+
+                    ele
+                })),
             Definition::Enum(enum_type) => enums.push(enum_type),
             Definition::EnumList(enum_types) => enums.extend(enum_types),
             Definition::Struct(struct_element) => structs.push(struct_element),
-            Definition::StructList(struct_elements) => structs.extend(struct_elements),
+            Definition::StructList(structs_definition) => structs.extend(
+                structs_definition
+                    .struct_elements
+                    .into_iter()
+                    .map(|mut ele| {
+                        if !ele.config.override_parent {
+                            ele.config = structs_definition.config.clone();
+                        }
+
+                        ele
+                    }),
+            ),
         }
     }
 
@@ -234,11 +336,17 @@ fn check_compatibility(version_config: VersionConfig) -> eyre::Result<()> {
     let caller_libs_version = Version::parse(&version_config.libs.version).unwrap();
 
     if !binary_version_req.matches(&current_crate_version) {
-        Err(eyre!("Binary version constraint not satisfied. Version: {} is specified in version.toml. Current binary version is: {}", 
-        &version_config.binary.version, &get_crate_version()))
+        Err(eyre!(
+            "Binary version constraint not satisfied. Version: {} is specified in version.toml. Current binary version is: {}",
+            &version_config.binary.version,
+            &get_crate_version()
+        ))
     } else if !libs_version_req.matches(&caller_libs_version) {
-        Err(eyre!("endpoint-libs version constraint not satisfied. Version: {} is specified in version.toml. This version of endpoint-gen requires: {}",
-        caller_libs_version, libs_version_requirement))
+        Err(eyre!(
+            "endpoint-libs version constraint not satisfied. Version: {} is specified in version.toml. This version of endpoint-gen requires: {}",
+            caller_libs_version,
+            libs_version_requirement
+        ))
     } else {
         Ok(())
     }

@@ -18,7 +18,7 @@ pub enum Definition {
     Enum(EnumElement),
     EnumList(Vec<EnumElement>),
     Struct(StructElement),
-    StructList(Vec<StructElement>),
+    StructList(StructListDefinition),
 }
 
 impl Definition {
@@ -32,12 +32,7 @@ impl Definition {
                 Ok(())
             }
             Definition::Struct(s) => s.validate_element(),
-            Definition::StructList(list) => {
-                for item in list {
-                    item.validate_element()?;
-                }
-                Ok(())
-            }
+            Definition::StructList(list) => list.validate_element(),
             Definition::EndpointSchema(schema) => schema.validate_element(),
             Definition::EndpointSchemaList(schemas) => schemas.validate_element(),
         }
@@ -205,6 +200,27 @@ impl ToRust for EnumElement {
         }
     }
 }
+#[derive(
+    Clone, Debug, Serialize, Deserialize, Hash, PartialEq, PartialOrd, Eq, Ord, DefinitionVariant,
+)]
+pub struct StructListDefinition {
+    #[serde(default)]
+    pub config: RustGenConfig,
+    pub struct_elements: Vec<StructElement>,
+}
+
+impl GenElement<StructListDefinition> for StructListDefinition {
+    fn validate_element(&self) -> eyre::Result<()> {
+        if self.struct_elements.iter().all(|s| match s.inner {
+            Type::Struct { .. } => true,
+            _ => false,
+        }) {
+            Ok(())
+        } else {
+            eyre::bail!("Not all elements of the StructListDefinition are Struct types")
+        }
+    }
+}
 
 /// Wraps the [Type::Struct] variant with extra config
 #[derive(
@@ -325,9 +341,13 @@ impl ToRust for StructElement {
 #[derive(Clone, Debug, Serialize, Deserialize, Hash, PartialEq, PartialOrd, Eq, Ord, Default)]
 pub struct RustGenConfig {
     #[serde(default)]
-    prefix_enum: bool,
+    pub prefix_enum: bool,
     #[serde(default)]
     pub worktable_support: bool,
+    #[serde(default)]
+    pub snake_case_fields: bool,
+    #[serde(default)]
+    pub override_parent: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -359,6 +379,8 @@ pub struct EndpointSchemaDefinition {
 pub struct EndpointSchemaElement {
     #[smart_default(true)]
     pub frontend_facing: bool,
+    #[serde(default)]
+    pub config: RustGenConfig,
     pub schema: EndpointSchema,
 }
 
@@ -393,6 +415,8 @@ impl GenElement<EndpointSchemaDefinition> for EndpointSchemaDefinition {
 pub struct EndpointSchemaListDefinition {
     pub service_name: String,
     pub service_id: u16,
+    #[serde(default)]
+    pub config: RustGenConfig,
     pub endpoints: Vec<EndpointSchemaElement>,
 }
 

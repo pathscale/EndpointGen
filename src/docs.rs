@@ -77,12 +77,13 @@ fn wrap_code_md(value: String) -> String {
     format!(r#"`{value}`"#)
 }
 
-fn format_type(name: &str, ty: &Type) -> String {
+fn format_type(field_name: &str, ty: &Type) -> String {
     match ty {
         Type::Struct { name, fields } => {
             format!(
-                r#"{}{:#}"#,
-                name.to_case(Case::Pascal),
+                r#"{}: {}{:#}"#,
+                field_name.to_case(Case::Camel),
+                name.to_case(Case::Camel),
                 format!(
                     "{{ {} }}",
                     fields
@@ -90,41 +91,57 @@ fn format_type(name: &str, ty: &Type) -> String {
                         .map(|x| format!("{}: {}", x.name.to_string(), x.ty.to_rust_ref(false)))
                         .join(", ")
                 )
-            ) 
+            )
         }
-        Type::StructTable { struct_ref } => format!("Vec<{}>", struct_ref.to_case(Case::Pascal),) ,
+        Type::StructTable { struct_ref } => {
+            format!(
+                "{}: Vec<{}>",
+                field_name.to_case(Case::Camel),
+                struct_ref.to_case(Case::Pascal),
+            )
+        }
         Type::Enum { name, variants } => {
             format!(
                 "{} {{ {} }}",
                 name.to_case(Case::Pascal),
                 variants.iter().map(|v| &v.name).join(", ")
-            ) 
+            )
         }
         Type::EnumRef {
             name,
             prefixed_name,
         } => {
             format!(
-                "{}",
+                "{}: {}",
+                field_name.to_case(Case::Camel),
                 prefixed_name
                     .then(|| format!("Enum{}", name.to_case(Case::Pascal)))
                     .unwrap_or(name.to_case(Case::Pascal))
-            ) 
+            )
         }
         Type::DataTable { name, fields } => {
             format!(
-                "Vec<{}{:#}>",
+                "{}: Vec<{}{:#}>",
+                field_name.to_case(Case::Camel),
                 name.to_case(Case::Pascal),
                 format!(
                     "{{ {} }}",
                     fields
                         .iter()
-                        .map(|x| format!("{}: {}", x.name.to_string(), x.ty.to_rust_ref(false)))
+                        .map(|x| format!(
+                            "{}: {}",
+                            x.name.to_case(Case::Camel),
+                            x.ty.to_rust_ref(false)
+                        ))
                         .join(", ")
                 )
-            ) 
+            )
         }
-        _ => format!("{}: {}", name.to_string(), ty.to_rust_ref(false)) ,
+        _ => format!(
+            "{}: {}",
+            field_name.to_case(Case::Camel),
+            ty.to_rust_ref(false)
+        ),
     }
 }
 
