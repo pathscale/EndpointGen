@@ -19,10 +19,10 @@ pub trait ToRust {
 impl ToRust for Type {
     fn to_rust_ref(&self, serde_with: bool) -> String {
         match self {
-            Type::Date => "u32".to_owned(), // TODO: resolve date
-            Type::Int => "i32".to_owned(),
-            Type::BigInt => "i64".to_owned(),
-            Type::Numeric => "f64".to_owned(),
+            Type::UInt32 => "u32".to_owned(),
+            Type::Int32 => "i32".to_owned(),
+            Type::Int64 => "i64".to_owned(),
+            Type::Float64 => "f64".to_owned(),
             Type::TimeStampMs => "i64".to_owned(),
             Type::Struct { name, .. } => name.clone(),
             Type::StructRef(name) => name.clone(),
@@ -40,7 +40,7 @@ impl ToRust for Type {
             Type::String => "String".to_owned(),
             Type::Bytea => "Vec<u8>".to_owned(),
             Type::UUID => "Uuid".to_owned(),
-            Type::Inet => "IpAddr".to_owned(),
+            Type::IpAddr => "IpAddr".to_owned(),
             Type::Enum { name, .. } => format!("Enum{}", name.to_case(Case::Pascal),),
             Type::EnumRef {
                 name,
