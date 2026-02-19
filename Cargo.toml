@@ -14,9 +14,7 @@ endpoint-libs-requirement = ">=1.3.0"
 [dependencies]
 # Internal dependencies
 # endpoint-libs = "1.3"
-endpoint-libs = { git = "https://github.com/pathscale/endpoint-libs.git", features = [
-    "ws",
-] }
+endpoint-libs = { git = "https://github.com/pathscale/endpoint-libs.git" }
 # endpoint-libs = { path = "../endpoint-libs" }
 endpoint-gen-macros = { path = "./endpoint-gen-macros" }
 serde = { version = "1.0", features = ["derive"] }
