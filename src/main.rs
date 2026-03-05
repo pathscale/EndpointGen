@@ -25,6 +25,7 @@ use walkdir::WalkDir;
 #[derive(Parser, Debug)]
 #[command(
     name = "endpoint-gen",
+    version,
     about = "Generate endpoint documentation and code."
 )]
 struct Cli {
