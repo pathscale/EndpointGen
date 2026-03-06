@@ -329,8 +329,8 @@ fn check_compatibility(version_config: VersionConfig) -> eyre::Result<()> {
 
     let binary_version_req = VersionReq::parse(&version_config.binary.version).unwrap();
 
-    // The version of endpoint-libs that we require to be used with this version of endpoint-gen
-    let libs_version_requirement = ">=1.0.3";
+    // The version of endpoint-libs that we require - dynamically fetched from Cargo.toml metadata
+    let libs_version_requirement = env!("ENDPOINT_LIBS_REQUIREMENT");
 
     let libs_version_req = VersionReq::parse(libs_version_requirement).unwrap();
 
