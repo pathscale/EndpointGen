@@ -1,7 +1,7 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
-## [0.5.1] - 2026-03-06
+## [1.3.4] - 2026-03-06
 
 ### Bug Fixes
 
@@ -17,6 +17,10 @@ All notable changes to this project will be documented in this file.
 - Support snake case field names with configurable conversion setting
 - Rename types to make more sense
 - Remove ws feature from endpoint-libs dep as we don't actually need it
+
+### Miscellaneous Tasks
+
+- Add version flag to cli
 
 ## [0.1.5] - 2024-10-08
 
