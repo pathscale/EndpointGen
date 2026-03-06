@@ -89,7 +89,7 @@ fn format_type(field_name: &str, ty: &Type, datamodels: bool) -> String {
                         "{{ {} }}",
                         fields
                             .iter()
-                            .map(|x| format!("{}: {}", x.name.to_string(), x.ty.to_rust_ref(false)))
+                            .map(|x| format!("{}: {}", x.name, x.ty.to_rust_ref(false)))
                             .join(", ")
                     )
                 )
@@ -101,7 +101,7 @@ fn format_type(field_name: &str, ty: &Type, datamodels: bool) -> String {
                         "{{ {} }}",
                         fields
                             .iter()
-                            .map(|x| format!("{}: {}", x.name.to_string(), x.ty.to_rust_ref(false)))
+                            .map(|x| format!("{}: {}", x.name, x.ty.to_rust_ref(false)))
                             .join(", ")
                     )
                 )

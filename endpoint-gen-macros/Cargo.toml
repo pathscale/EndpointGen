@@ -1,7 +1,10 @@
 [package]
 name = "endpoint-gen-macros"
-version = "0.1.0"
-edition = "2021"
+version = "1.3.4" # Ideally locked to endpoint-libs version, or at least semver compatible
+edition = "2024"
+repository = "https://github.com/pathscale/EndpointGen/"
+description = "Helper macros to improve compile-time validation within EndpointGen"
+license = "MIT"
 
 [lib]
 proc-macro = true
