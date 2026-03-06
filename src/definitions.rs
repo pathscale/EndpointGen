@@ -68,25 +68,23 @@ impl GenElement<EnumElement> for EnumElement {
 impl ToRust for EnumElement {
     fn to_rust_ref(&self, _serde_with: bool) -> String {
         self.validate_element()
-            .expect(&format!("EnumElement is invalid: {self:?}"));
+            .unwrap_or_else(|_| panic!("EnumElement is invalid: {self:?}"));
 
         let name = match &self.inner {
             Type::Enum { name, .. } => name.to_case(Case::Pascal),
             _ => unreachable!("The previous validation ensured that this type is a valid Enum"),
         };
 
-        let name = if self.config.prefix_enum {
+        if self.config.prefix_enum {
             format!("Enum{name}")
         } else {
             name
-        };
-
-        name
+        }
     }
 
     fn to_rust_decl(&self, serde_with: bool, add_derives: bool) -> String {
         self.validate_element()
-            .expect(&format!("EnumElement is invalid: {self:?}"));
+            .unwrap_or_else(|_| panic!("EnumElement is invalid: {self:?}"));
 
         let code_regex =
             regex::Regex::new(r"=\s*(\d+)").expect("Error building regex to extract endpoint code");
@@ -211,10 +209,11 @@ pub struct StructListDefinition {
 
 impl GenElement<StructListDefinition> for StructListDefinition {
     fn validate_element(&self) -> eyre::Result<()> {
-        if self.struct_elements.iter().all(|s| match s.inner {
-            Type::Struct { .. } => true,
-            _ => false,
-        }) {
+        if self
+            .struct_elements
+            .iter()
+            .all(|s| matches!(s.inner, Type::Struct { .. }))
+        {
             Ok(())
         } else {
             eyre::bail!("Not all elements of the StructListDefinition are Struct types")
@@ -244,7 +243,7 @@ impl GenElement<StructElement> for StructElement {
 impl ToRust for StructElement {
     fn to_rust_ref(&self, _serde_with: bool) -> String {
         self.validate_element()
-            .expect(&format!("StructElement is invalid: {self:?}"));
+            .unwrap_or_else(|_| panic!("StructElement is invalid: {self:?}"));
 
         match &self.inner {
             Type::Struct { name, .. } => name.clone(),
@@ -254,7 +253,7 @@ impl ToRust for StructElement {
 
     fn to_rust_decl(&self, serde_with: bool, add_derives: bool) -> String {
         self.validate_element()
-            .expect(&format!("StructElement is invalid: {self:?}"));
+            .unwrap_or_else(|_| panic!("StructElement is invalid: {self:?}"));
 
         let (name, fields) = match &self.inner {
             Type::Struct { name, fields } => (name.to_case(Case::Pascal), fields),
@@ -384,17 +383,17 @@ pub struct EndpointSchemaElement {
     pub schema: EndpointSchema,
 }
 
-impl Into<EndpointSchema> for EndpointSchemaElement {
-    fn into(self) -> EndpointSchema {
+impl From<EndpointSchemaElement> for EndpointSchema {
+    fn from(val: EndpointSchemaElement) -> Self {
         EndpointSchema {
-            name: self.schema.name,
-            code: self.schema.code,
-            parameters: self.schema.parameters,
-            returns: self.schema.returns,
-            stream_response: self.schema.stream_response,
-            description: self.schema.description,
-            json_schema: self.schema.json_schema,
-            roles: self.schema.roles,
+            name: val.schema.name,
+            code: val.schema.code,
+            parameters: val.schema.parameters,
+            returns: val.schema.returns,
+            stream_response: val.schema.stream_response,
+            description: val.schema.description,
+            json_schema: val.schema.json_schema,
+            roles: val.schema.roles,
         }
     }
 }
