@@ -1,361 +1,183 @@
-# EndpointGen
+# endpoint-gen
+
 [![Crates.io](https://img.shields.io/crates/v/endpoint-gen.svg)](https://crates.io/crates/endpoint-gen)
-[![dependency status](https://deps.rs/crate/endpoint-gen/0.1.3/status.svg)](https://deps.rs/crate/endpoint-gen/0.1.3)
+[![dependency status](https://deps.rs/crate/endpoint-gen/1.3.1/status.svg)](https://deps.rs/crate/endpoint-gen/1.3.1)
 
+A CLI code generator for WebSocket API endpoints used across Pathscale projects. Reads `.ron` config files describing services, enums, and structs, and generates Rust model code and documentation.
 
-# NB NB TODO: This readme needs to be updated following binary . Please look at the readme in the examples project for more up to date info.
+## Installation
 
-
-A highly opinionated template engine to help generate endpoints and related pieces for Rust projects
-
-## Running
-
-1. Set up according to the guide below
-2. Run `cargo build` for the `gen` crate
-3. Generation will run on every build where something required for generation has changed since the last build
-4. On first run, `/project_root/docs/error_codes.json` will be created. This is meant to be manually edited and is used to generate the error code logic for the endpoints, as well as to generate a more readable `error_codes.md` file
-
-### Adding an error code
-
-Add the following to `/project_root/docs/error_codes.json`:
-
-```json
-{
-  "language": "en",
-  "codes": [
-    {
-      "code": 100400,
-      "symbol": "BadRequest",
-      "message": "Bad Request",
-      "source": "Custom"
-    }
-}
+```sh
+cargo install endpoint-gen
 ```
 
-Upon next generation, inspect the `error_codes.md` file, as well as the generated `model.rs` file, to see that the error code you have added can be seen in those files.
+## Usage
 
-## Setup and Getting Started
+```sh
+endpoint-gen --config-dir <path/to/config> --output-dir <path/to/project>
+```
 
-Note: The directory and module structures proposed below are purely for demonstration purposes and can be changed as required according to the project EndpointGen is added to. This is a good default to follow though.
+- `--config-dir`: directory containing `.ron` config files and `version.toml` (defaults to current directory)
+- `--output-dir`: root of the project where `generated/` will be written (defaults to current directory)
 
-1. In a terminal navigated to the root of your project, run: `cargo new --lib --vcs none gen`
-2. Add the following to the `gen` crate's `Cargo.toml`:
+Generated files are written to `<output-dir>/generated/`.
+
+## Config Directory
+
+The config directory must contain a `version.toml` and any number of `.ron` files. All `.ron` files are discovered recursively.
+
+### `version.toml`
+
+Declares the required versions of the binary and `endpoint-libs`:
 
 ```toml
-[dependencies]
-endpoint-gen = "*" 
+[binary]
+version = ">=0.5.0"
 
-[build-dependencies]
-endpoint-gen = "*"
-eyre = "*"
+[libs]
+version = "1.3.4"
 ```
 
-3. Add a `build.rs` to the `gen` directory with at least the following:
+Generation will fail if the installed binary or the caller's `endpoint-libs` version does not satisfy these constraints.
 
-```rust
-use std::{env, path::PathBuf};
+## RON File Format
 
-use endpoint_gen::Data;
+Each `.ron` file wraps a single `Definition`:
 
-fn main() -> eyre::Result<()> {
-    println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-changed=../docs/error_codes/error_codes.json");
-
-    // Set these up to match your environment
-    let current_dir = env::current_dir()?;
-    let root = current_dir.parent().unwrap(); // This should evaluate to the root of your project where the project Cargo.toml can be found
-    let output_dir = &current_dir.join("generated"); // This should evaluate to the `<root>/gen/generated/` dir
-
-    let data = Data {
-        project_root: PathBuf::from(&root),
-        output_dir: PathBuf::from(root),
-        services: gen_src::services::get_services(),
-        enums: gen_src::enums::get_enums(),
-        pg_funcs: gen_src::proc_funcs::get_proc_functions(),
-    };
-
-    endpoint_gen::main(data)?;
-
-    Ok(())
-}
+```ron
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+Config(
+    definition: <DefinitionVariant>( ... )
+)
 ```
 
-5. Add the `gen` crate to your project root's Cargo.toml, and add it to the workspace dependencies:
+### Endpoints
 
-```toml
-[workspace]
-members = [
-  "gen",
-  ...
-]
+Define a service's WebSocket endpoints with `EndpointSchemaList`. Each file specifies the service name, a unique numeric service ID, and a list of endpoint schemas.
 
-[workspace.dependencies]
-## Internal dependencies
-gen = { path = "./gen" }
-```
-
-## Adding generation sources
-
-Add `gen_src` as a module to the `gen` project:
-
-- Add `gen_src.rs` at the same level as `build.rs`
-- Add the `gen_src` directory at the same level
-
-Add the following as submodules to `/gen/gen_src/`
-
-- `services.rs`
-- `enums.rs`
-- `proc_funcs.rs`
-
-Declare the modules in `/gen/gen_src.rs`:
-
-```rust
-pub mod enums;
-pub mod proc_funcs;
-pub mod services;
-```
-
-Your directory structure should now look like the following:
-
-```text
-project_root/
-├─ gen/
-│  ├─ gen_src/
-│  │  ├─ enums.rs
-│  │  ├─ proc_funcs.rs
-│  │  ├─ services.rs
-│  ├─ src/
-│  │  ├─ lib.rs
-│  ├─ build.rs
-│  ├─ Cargo.toml
-│  ├─ gen_src.rs
-Cargo.toml
-```
-
-### Adding Services
-
-Add the following to `services.rs`:
-
-```rust
-use endpoint_gen::model::Service;
-
-/// Returns a vector of the available `Service`s (e.g. `auth`, `user`, `admin`, `chatbot`).
-pub fn get_services() -> Vec<Service> {
-    vec![]
-}
-```
-
-Now edit `build.rs` and add the following:
-
-```rust
-// ...Includes above
-
-fn main() -> eyre::Result<()> {
-    ...
-    let data = Data {
-        ...
-        services: services::get_services(),
-        ...
-    }
-    ...
-```
-
-### Adding enums
-
-Add the following to `enums.rs`:
-
-```rust
-use endpoint_gen::model::Type;
-
-/// Returns a vector of the available `Service`s (e.g. `auth`, `user`, `admin`, `chatbot`).
-pub fn get_enums() -> Vec<Type> {
-    vec![]
-}
-```
-
-Now edit `build.rs` and add the following:
-
-```rust
-...
-fn main() -> eyre::Result<()> {
-    ...
-    let data = Data {
-        ...
-        enums: enums::get_enums(),
-        ...
-    }
-    ...
-```
-
-### Adding procedural functions
-
-Add the following to `proc_funcs.rs`:
-
-```rust
-use endpoint_gen::model::ProceduralFunction;
-
-/// Returns a vector of the available `ProceduralFunction`s (e.g. `auth`, `user`, `admin`, `chatbot`).
-pub fn get_proc_functions() -> Vec<ProceduralFunction> {
-    vec![]
-}
-```
-
-Now edit `build.rs` and add the following:
-
-```rust
-...
-fn main() -> eyre::Result<()> {
-    ...
-    let data = Data {
-        ...
-        pg_funcs: proc_funcs::get_proc_functions(),
-        ...
-    }
-    ...
-```
-
-## Defining generation sources
-
-### Services
-
-"Services" correspond to individual binaries that are intended to run as services within a Linux environment. Defining these allows endpoint-gen to create the corresponding service files that can be deployed to the target system and run.
-
-A service has:
-
-- A name
-- An ID
-- A list of Websocket endpoints that the service exposes
-
-Add the following to `services.rs`:
-
-```rust
-use endpoint_gen::model::{EndpointSchema, Field, Service, Type};
-
-pub fn get_services() -> Vec<Service> {
-    vec![
-        Service::new("service_1", 1, get_service_endpoints()),
-    ]
-}
-
-pub fn get_service_endpoints() -> Vec<EndpointSchema> {
-    vec![example_endpoint()]
-}
-
-pub fn example_endpoint() -> EndpointSchema {
-    
-}
-```
-
-#### Defining an endpoint
-
-An endpoint, defined by `EndpointSchema`, is defined by:
-
-- A name
-- A unique numeric code
-- A list of input parameters, defined by name and `Type`
-- A list of return values, defined by name and `Type`
-
-Add the following to the `example_endpoint` function:
-
-```rust
-EndpointSchema::new(
-        "Authorize", // name
-        10030, // code
-        vec![  // input params
-            Field::new("username", Type::String),
-            Field::new("token", Type::UUID),
-            Field::new("service", Type::enum_ref("service")),
-            Field::new("device_id", Type::String),
-            Field::new("device_os", Type::String),
-        ],
-        vec![Field::new("success", Type::Boolean)], // returns
+```ron
+Config(
+    definition: EndpointSchemaList (
+        "my_service",
+        1,
+        [
+            EndpointSchema(
+                name: "UserGetBalance",
+                code: 10100,
+                parameters: [
+                    Field(name: "user_id", ty: Optional(Int)),
+                ],
+                returns: [
+                    Field(name: "data", ty: Struct(
+                        name: "Balance",
+                        fields: [
+                            Field(name: "amount", ty: Numeric),
+                        ],
+                    )),
+                ],
+                stream_response: None,
+                description: "Returns the current balance for the user.",
+                json_schema: (),
+                roles: ["UserRole::Superadmin"],
+            ),
+        ]
     )
+)
 ```
+
+Endpoints with push/subscription behaviour set `stream_response` to the type streamed back to the client:
+
+```ron
+stream_response: Some(DataTable(
+    name: "LivePosition",
+    fields: [
+        Field(name: "id", ty: BigInt),
+        Field(name: "price", ty: Numeric),
+    ],
+)),
+```
+
+#### Available field types
+
+| Type | Description |
+|---|---|
+| `UInt32` | Unsigned 32-bit integer |
+| `Int32` | Signed 32-bit integer |
+| `Int64` | Signed 64-bit integer |
+| `Float64` | 64-bit float |
+| `Boolean` | Boolean |
+| `String` | UTF-8 string |
+| `Bytea` | Byte array |
+| `UUID` | UUID |
+| `IpAddr` | IP address |
+| `TimeStampMs` | Timestamp in milliseconds |
+| `Object` | Arbitrary JSON object |
+| `Unit` | No value |
+| `Optional(T)` | Nullable field |
+| `Vec(T)` | List of `T` |
+| `Struct(name, fields)` | Inline named struct |
+| `StructRef(name)` | Reference to a named struct |
+| `StructTable(struct_ref)` | List of a named struct (tabular data) |
+| `Enum(name, variants)` | Inline enum definition |
+| `EnumRef(name, prefixed_name)` | Reference to a named enum |
+| `BlockchainDecimal` | Blockchain decimal value |
+| `BlockchainAddress` | Blockchain address |
+| `BlockchainTransactionHash` | Blockchain transaction hash |
 
 ### Enums
 
-An enum in this context refers to an enum used within the database (currently postgres) for enumerating various types of objects that may be required for logic or frontend display purposes
+Define enums with `EnumList`:
 
-An enum (which is a variant of the actual Rust enum, `Type`, defined in `endpoint-gen/src/model/types.rs`) is defined by the following:
-
-- A name
-- A list of variants, defined by `EnumVariant`
-
-#### Defining an enum
-
-Add the following to the `get_enums` function in `enums.rs`:
-
-```rust
-use endpoint_gen::model::{EnumVariant, Type};
-
-pub fn get_enums() -> Vec<Type> {
-    vec![Type::enum_(
-        "role".to_owned(),
-        vec![
-            EnumVariant::new("guest", 0),
-            EnumVariant::new("user", 1),
-            EnumVariant::new("admin", 2),
-            EnumVariant::new("developer", 3),
-        ],
-    )]
-}
+```ron
+Config(
+    definition: EnumList (
+        [
+            Enum(
+                name: "UserRole",
+                variants: [
+                    EnumVariant(name: "Superadmin", value: 1, comment: "Full access."),
+                    EnumVariant(name: "Support",    value: 2, comment: "Read-only access."),
+                ],
+            ),
+        ]
+    )
+)
 ```
 
-As can be seen, an `EnumVariant` just consists of a name and an ordinal
+### Structs
 
-### Procedural functions
+Shared struct types can be declared with `Struct` or `StructList` and will be emitted as top-level types in the generated model.
 
-A procedural function bundles and wraps an actual database query (currently SQL with Postgres) in a strongly typed and identifiable structure that contains:
+## Version Compatibility
 
-- A name
-- A list of parameters that the function accepts
-- A return row type of the function
-- The raw SQL of the function
+`endpoint-gen` and `endpoint-libs` are versioned together. **Minor versions must match** between all Pathscale crates in a project (`endpoint-gen`, `endpoint-libs`, `honey_id-types`).
 
-Add the following to `get_proc_functions` and `proc_funcs.rs`:
+For example, `endpoint-gen 1.3.x` must be paired with `endpoint-libs 1.3.x`.
 
-```rust
-use endpoint_gen::model::{Field, ProceduralFunction, Type};
+## Releasing
 
-pub fn get_proc_functions() -> Vec<ProceduralFunction> {
-    vec![
-        get_example_func(),
-    ]
-    .concat()
-}
+Releases are managed with [`cargo-release`](https://github.com/crate-ci/cargo-release) and [`git-cliff`](https://github.com/orhun/git-cliff). Both must be installed:
 
-fn get_example_func() -> Vec<ProceduralFunction> {
-
-}
+```sh
+cargo install cargo-release git-cliff
 ```
 
-#### Defining a procedural function
+To cut a release:
 
-Add the following to `get_example_func`:
+```sh
+./scripts/release.sh [--skip-bump] <patch|minor|major>
+```
 
-```rust
-fn get_example_func() -> Vec<ProceduralFunction> {
-    vec![ProceduralFunction::new(
-        "fun_user_add_object", // Proc func name
-        vec![
-            // Proc func input params
-            Field::new("kind", Type::Int),
-            Field::new("id", Type::Int),
-            Field::new("timestamp", Type::BigInt),
-            Field::new("transaction_hash", Type::BlockchainTransactionHash),
-            Field::new("contract_address", Type::BlockchainAddress),
-            Field::new("detail", Type::Object), // JSON object
-        ],
-        vec![Field::new("success", Type::Boolean)], // Proc func returns
-        // Raw sql
-        r#"
-        BEGIN
-            -- delete same kind of object for the same address
-            DELETE FROM tbl.object WHERE contract_address = a_contract_address;
-            INSERT INTO tbl.object (kind, id, timestamp, transaction_hash, contract_address, detail)
-            VALUES (a_kind, a_id, a_timestamp, a_transaction_hash, a_contract_address, a_detail);
-        END
-        "#,
-    )]
-}
+The script will:
+1. Run `cargo release --execute <level>` — bumps the version in `Cargo.toml`, updates the deps.rs badge in this README, regenerates `CHANGELOG.md`, and commits everything as `chore(release): vX.Y.Z`.
+2. Open your `$EDITOR` with the auto-generated tag notes (from `git-cliff`) for review.
+3. Create an annotated tag using the edited notes as the tag body (shown as GitHub Release notes).
+4. Push the commit and tag.
+5. Prompt whether to publish to crates.io.
+
+To preview what `cargo-release` would do without making changes:
+
+```sh
+cargo release patch  # omit --execute for a dry run
 ```
