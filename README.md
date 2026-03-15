@@ -151,18 +151,23 @@ Shared struct types can be declared with `Struct` or `StructList` and will be em
 
 ### JSON Schema Generation
 
-Enable JSON schema generation for enums and structs by setting the `json_schema_gen` configuration option to `true` on the parent element:
+Enable JSON schema generation for enums and structs by setting the `json_schema_gen` configuration option on the parent element:
 
 ```ron
 Config(
-    definition: EnumList (
+    definition: EnumList(
         config: (json_schema_gen: true),
         enum_elements: [
-            Enum(
-                // ... enum definition ...
+            EnumElement(
+                inner: Enum(
+                    name: "MyEnum",
+                    variants: [
+                        EnumVariant(name: "Variant1", value: 0, description: "..."),
+                    ],
+                ),
             ),
-        ]
-    )
+        ],
+    ),
 )
 ```
 
