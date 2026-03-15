@@ -149,6 +149,25 @@ Config(
 
 Shared struct types can be declared with `Struct` or `StructList` and will be emitted as top-level types in the generated model.
 
+### JSON Schema Generation
+
+Enable JSON schema generation for enums and structs by setting the `json_schema_gen` configuration option to `true` on the parent element:
+
+```ron
+Config(
+    definition: EnumList (
+        config: (json_schema_gen: true),
+        enum_elements: [
+            Enum(
+                // ... enum definition ...
+            ),
+        ]
+    )
+)
+```
+
+This applies the configuration to all child elements. When enabled, the generated code will include `schemars::JsonSchema` derives and imports. Your project must include the `schemars` crate as a dependency to use this feature.
+
 ## Version Compatibility
 
 `endpoint-gen` and `endpoint-libs` are versioned together. **Minor versions must match** between all Pathscale crates in a project (`endpoint-gen`, `endpoint-libs`, `honey_id-types`).
