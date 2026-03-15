@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [1.5.0] - 2026-03-15
+
+### Features
+
+- Add parent element configuration for EnumList
+
+### Miscellaneous Tasks
+
+- Update example project
+
 ## [1.4.0] - 2026-03-15
 
 ### Features

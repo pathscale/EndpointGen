@@ -1,7 +1,7 @@
 # endpoint-gen
 
 [![Crates.io](https://img.shields.io/crates/v/endpoint-gen.svg)](https://crates.io/crates/endpoint-gen)
-[![dependency status](https://deps.rs/crate/endpoint-gen/1.4.0/status.svg)](https://deps.rs/crate/endpoint-gen/1.4.0)
+[![dependency status](https://deps.rs/crate/endpoint-gen/1.5.0/status.svg)](https://deps.rs/crate/endpoint-gen/1.5.0)
 
 A CLI code generator for WebSocket API endpoints used across Pathscale projects. Reads `.ron` config files describing services, enums, and structs, and generates Rust model code and documentation.
 
