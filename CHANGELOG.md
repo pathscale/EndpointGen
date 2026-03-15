@@ -1,7 +1,11 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
-## [1.3.4] - 2026-03-06
+## [1.4.0] - 2026-03-15
+
+### Features
+
+- Add configurable JSON Schema generation via [schemars](https://crates.io/crates/schemars) codegen derive and import
 
 ### Miscellaneous Tasks
 
