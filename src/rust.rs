@@ -231,6 +231,14 @@ pub fn gen_model_rs(data: &Data) -> eyre::Result<()> {
         ""
     };
 
+    let json_schema_imports = if data.enums.iter().any(|e| e.config.json_schema_gen)
+        || data.structs.iter().any(|s| s.config.json_schema_gen)
+    {
+        r#"use schemars::{schema_for, JsonSchema};"#
+    } else {
+        ""
+    };
+
     let mut model_file = File::create(&db_filename)?;
     write!(
         &mut model_file,
@@ -243,6 +251,7 @@ pub fn gen_model_rs(data: &Data) -> eyre::Result<()> {
         use uuid::Uuid;
         use std::net::IpAddr;
         {worktable_imports}
+        {json_schema_imports}
         ",
     )?;
 

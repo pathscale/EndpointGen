@@ -187,11 +187,16 @@ impl ToRust for EnumElement {
                     rkyv::Serialize,
                     serde::Serialize,
                     serde::Deserialize,
+                    {}
                 )]
                 #[rkyv(compare(PartialEq), derive(Debug))]
                 #[repr(u8)]
                 {input}
-            "#
+            "#,
+                self.config
+                    .json_schema_gen
+                    .then(|| "JsonSchema,")
+                    .unwrap_or_default()
             )
         } else {
             Type::add_default_enum_derives(input)
@@ -330,7 +335,16 @@ impl ToRust for StructElement {
             //     "#
 
             // TODO: Fix worktable support for structs
-            Type::add_default_struct_derives(input)
+            format!(
+                r#" #[derive(Serialize, Deserialize, Debug, Clone, {})]
+                #[serde(rename_all = "camelCase")]
+                {input}
+            "#,
+                self.config
+                    .json_schema_gen
+                    .then(|| "JsonSchema,")
+                    .unwrap_or_default()
+            )
         } else {
             Type::add_default_struct_derives(input)
         }
@@ -343,6 +357,8 @@ pub struct RustGenConfig {
     pub prefix_enum: bool,
     #[serde(default)]
     pub worktable_support: bool,
+    #[serde(default)]
+    pub json_schema_gen: bool,
     #[serde(default)]
     pub snake_case_fields: bool,
     #[serde(default)]
