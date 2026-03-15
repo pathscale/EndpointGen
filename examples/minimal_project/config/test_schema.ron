@@ -1,23 +1,26 @@
 #![enable(unwrap_newtypes)]
 #![enable(unwrap_variant_newtypes)]
+
 Config(
-    definition: Service(
-        name: "service 1",
-        id: 12345,
+    definition: EndpointSchemaList(
+        service_name: "test_service",
+        service_id: 1,
         endpoints: [
-            EndpointSchema(
-                name: "test",
-                code: 123,
-                parameters: [
-                    Field(name: "testinputfield", ty: BigInt),
-                ],
-                returns: [
-                    Field(name: "testreturnfield", ty: BigInt),
-                ],
-                stream_response: None,
-                description: "",
-                json_schema: (),
-                roles: ["UserRole::Superadmin", "UserRole::Support"],
+            EndpointSchemaElement(
+                schema: (
+                    name: "TestEndpoint",
+                    code: 10000,
+                    parameters: [
+                        Field(name: "test_input", ty: Int32),
+                    ],
+                    returns: [
+                        Field(name: "test_output", ty: String),
+                    ],
+                    stream_response: None,
+                    description: "A simple test endpoint",
+                    json_schema: (),
+                    roles: ["UserRole::Superadmin"],
+                ),
             ),
         ],
     ),
