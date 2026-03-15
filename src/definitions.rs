@@ -16,7 +16,7 @@ pub enum Definition {
     EndpointSchema(EndpointSchemaDefinition),
     EndpointSchemaList(EndpointSchemaListDefinition),
     Enum(EnumElement),
-    EnumList(Vec<EnumElement>),
+    EnumList(EnumListDefinition),
     Struct(StructElement),
     StructList(StructListDefinition),
 }
@@ -25,12 +25,7 @@ impl Definition {
     pub fn validate_self(&self) -> eyre::Result<()> {
         match self {
             Definition::Enum(e) => e.validate_element(),
-            Definition::EnumList(list) => {
-                for item in list {
-                    item.validate_element()?;
-                }
-                Ok(())
-            }
+            Definition::EnumList(list) => list.validate_element(),
             Definition::Struct(s) => s.validate_element(),
             Definition::StructList(list) => list.validate_element(),
             Definition::EndpointSchema(schema) => schema.validate_element(),
@@ -61,6 +56,29 @@ impl GenElement<EnumElement> for EnumElement {
         match &self.inner {
             Type::Enum { .. } => Ok(()),
             _ => eyre::bail!("Expected enum type"),
+        }
+    }
+}
+
+#[derive(
+    Clone, Debug, Serialize, Deserialize, Hash, PartialEq, PartialOrd, Eq, Ord, DefinitionVariant,
+)]
+pub struct EnumListDefinition {
+    #[serde(default)]
+    pub config: RustGenConfig,
+    pub enum_elements: Vec<EnumElement>,
+}
+
+impl GenElement<EnumListDefinition> for EnumListDefinition {
+    fn validate_element(&self) -> eyre::Result<()> {
+        if self
+            .enum_elements
+            .iter()
+            .all(|e| matches!(e.inner, Type::Enum { .. }))
+        {
+            Ok(())
+        } else {
+            eyre::bail!("Not all elements of the EnumListDefinition are Enum types")
         }
     }
 }
