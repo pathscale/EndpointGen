@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [1.5.1] - 2026-03-28
+
+### Miscellaneous Tasks
+
+- Migrate to ubicloud build machine
+- Update endpoint-libs to 1.3.5
+
 ## [1.5.0] - 2026-03-15
 
 ### Features
