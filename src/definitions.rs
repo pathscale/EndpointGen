@@ -42,9 +42,7 @@ where
 }
 
 /// Wraps the [Type::Enum] variant with extra config
-#[derive(
-    Clone, Debug, Serialize, Deserialize, Hash, PartialEq, PartialOrd, Eq, Ord, DefinitionVariant,
-)]
+#[derive(Clone, Debug, Serialize, Deserialize, Hash, PartialEq, PartialOrd, Eq, Ord, DefinitionVariant)]
 pub struct EnumElement {
     #[serde(default)]
     pub config: RustGenConfig,
@@ -60,9 +58,7 @@ impl GenElement<EnumElement> for EnumElement {
     }
 }
 
-#[derive(
-    Clone, Debug, Serialize, Deserialize, Hash, PartialEq, PartialOrd, Eq, Ord, DefinitionVariant,
-)]
+#[derive(Clone, Debug, Serialize, Deserialize, Hash, PartialEq, PartialOrd, Eq, Ord, DefinitionVariant)]
 pub struct EnumListDefinition {
     #[serde(default)]
     pub config: RustGenConfig,
@@ -71,11 +67,7 @@ pub struct EnumListDefinition {
 
 impl GenElement<EnumListDefinition> for EnumListDefinition {
     fn validate_element(&self) -> eyre::Result<()> {
-        if self
-            .enum_elements
-            .iter()
-            .all(|e| matches!(e.inner, Type::Enum { .. }))
-        {
+        if self.enum_elements.iter().all(|e| matches!(e.inner, Type::Enum { .. })) {
             Ok(())
         } else {
             eyre::bail!("Not all elements of the EnumListDefinition are Enum types")
@@ -104,8 +96,7 @@ impl ToRust for EnumElement {
         self.validate_element()
             .unwrap_or_else(|_| panic!("EnumElement is invalid: {self:?}"));
 
-        let code_regex =
-            regex::Regex::new(r"=\s*(\d+)").expect("Error building regex to extract endpoint code");
+        let code_regex = regex::Regex::new(r"=\s*(\d+)").expect("Error building regex to extract endpoint code");
 
         match &self.inner {
             Type::Enum {
@@ -134,15 +125,11 @@ impl ToRust for EnumElement {
                         let code_a = {
                             match code_regex.captures(a) {
                                 Some(code) => code[1].parse::<u64>().unwrap_or_else(|err| {
-                                    eprintln!(
-                                        "Sorting error: {err}: Rust output may not be sorted correctly"
-                                    );
+                                    eprintln!("Sorting error: {err}: Rust output may not be sorted correctly");
                                     0
                                 }),
                                 None => {
-                                    eprintln!(
-                                        "Sorting error: Rust output may not be sorted correctly"
-                                    );
+                                    eprintln!("Sorting error: Rust output may not be sorted correctly");
                                     0
                                 }
                             }
@@ -150,18 +137,12 @@ impl ToRust for EnumElement {
 
                         let code_b = {
                             match code_regex.captures(b) {
-                                Some(code) => {
-                                    code[1].parse::<u64>().unwrap_or_else(|err| {
-                                        eprintln!(
-                                        "Sorting error: {err}: Rust output may not be sorted correctly"
-                                    );
-                                        0
-                                    })
-                                }
+                                Some(code) => code[1].parse::<u64>().unwrap_or_else(|err| {
+                                    eprintln!("Sorting error: {err}: Rust output may not be sorted correctly");
+                                    0
+                                }),
                                 None => {
-                                    eprintln!(
-                                        "Sorting error: Rust output may not be sorted correctly"
-                                    );
+                                    eprintln!("Sorting error: Rust output may not be sorted correctly");
                                     0
                                 }
                             }
@@ -169,11 +150,7 @@ impl ToRust for EnumElement {
 
                         code_a.cmp(&code_b)
                     });
-                let enum_content = format!(
-                    r#"pub enum {} {{{}}}"#,
-                    self.to_rust_ref(serde_with),
-                    fields.join(",")
-                );
+                let enum_content = format!(r#"pub enum {} {{{}}}"#, self.to_rust_ref(serde_with), fields.join(","));
 
                 if add_derives {
                     self.add_derives(enum_content)
@@ -211,19 +188,14 @@ impl ToRust for EnumElement {
                 #[repr(u8)]
                 {input}
             "#,
-                self.config
-                    .json_schema_gen
-                    .then(|| "JsonSchema,")
-                    .unwrap_or_default()
+                self.config.json_schema_gen.then(|| "JsonSchema,").unwrap_or_default()
             )
         } else {
             Type::add_default_enum_derives(input)
         }
     }
 }
-#[derive(
-    Clone, Debug, Serialize, Deserialize, Hash, PartialEq, PartialOrd, Eq, Ord, DefinitionVariant,
-)]
+#[derive(Clone, Debug, Serialize, Deserialize, Hash, PartialEq, PartialOrd, Eq, Ord, DefinitionVariant)]
 pub struct StructListDefinition {
     #[serde(default)]
     pub config: RustGenConfig,
@@ -245,9 +217,7 @@ impl GenElement<StructListDefinition> for StructListDefinition {
 }
 
 /// Wraps the [Type::Struct] variant with extra config
-#[derive(
-    Clone, Debug, Serialize, Deserialize, Hash, PartialEq, PartialOrd, Eq, Ord, DefinitionVariant,
-)]
+#[derive(Clone, Debug, Serialize, Deserialize, Hash, PartialEq, PartialOrd, Eq, Ord, DefinitionVariant)]
 pub struct StructElement {
     #[serde(default)]
     pub config: RustGenConfig,
@@ -315,11 +285,7 @@ impl ToRust for StructElement {
         });
         let input = format!("pub struct {} {{{}}}", name, fields.join(","));
 
-        if add_derives {
-            self.add_derives(input)
-        } else {
-            input
-        }
+        if add_derives { self.add_derives(input) } else { input }
     }
 
     fn add_derives(&self, input: String) -> String {
@@ -358,10 +324,7 @@ impl ToRust for StructElement {
                 #[serde(rename_all = "camelCase")]
                 {input}
             "#,
-                self.config
-                    .json_schema_gen
-                    .then(|| "JsonSchema,")
-                    .unwrap_or_default()
+                self.config.json_schema_gen.then(|| "JsonSchema,").unwrap_or_default()
             )
         } else {
             Type::add_default_struct_derives(input)
@@ -392,11 +355,7 @@ pub struct GenService {
 
 impl GenService {
     pub fn new(name: String, id: u16, endpoints: Vec<EndpointSchemaElement>) -> Self {
-        Self {
-            name,
-            id,
-            endpoints,
-        }
+        Self { name, id, endpoints }
     }
 }
 

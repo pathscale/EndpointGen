@@ -23,11 +23,7 @@ use walkdir::WalkDir;
 
 /// A simple program to process service definitions from multiple TOML files
 #[derive(Parser, Debug)]
-#[command(
-    name = "endpoint-gen",
-    version,
-    about = "Generate endpoint documentation and code."
-)]
+#[command(name = "endpoint-gen", version, about = "Generate endpoint documentation and code.")]
 struct Cli {
     /// Config directory. Will be set to current directory if not specified
     #[arg(short, long)]
@@ -238,10 +234,7 @@ fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
                 .or_default()
                 .push(schema_definition.schema),
             Definition::EndpointSchemaList(schema_list_definition) => service_schema_map
-                .entry((
-                    schema_list_definition.service_name,
-                    schema_list_definition.service_id,
-                ))
+                .entry((schema_list_definition.service_name, schema_list_definition.service_id))
                 .or_default()
                 .extend(schema_list_definition.endpoints.into_iter().map(|mut ele| {
                     if !ele.config.override_parent {
@@ -261,18 +254,15 @@ fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
                 }))
             }
             Definition::Struct(struct_element) => structs.push(struct_element),
-            Definition::StructList(structs_definition) => structs.extend(
-                structs_definition
-                    .struct_elements
-                    .into_iter()
-                    .map(|mut ele| {
-                        if !ele.config.override_parent {
-                            ele.config = structs_definition.config.clone();
-                        }
+            Definition::StructList(structs_definition) => {
+                structs.extend(structs_definition.struct_elements.into_iter().map(|mut ele| {
+                    if !ele.config.override_parent {
+                        ele.config = structs_definition.config.clone();
+                    }
 
-                        ele
-                    }),
-            ),
+                    ele
+                }))
+            }
         }
     }
 
@@ -286,11 +276,9 @@ fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
     services.sort_by(|a, b| a.id.cmp(&b.id));
 
     // Sort the endpoints of each service by their codes
-    services.iter_mut().for_each(|service| {
-        service
-            .endpoints
-            .sort_by(|a, b| a.schema.code.cmp(&b.schema.code))
-    });
+    services
+        .iter_mut()
+        .for_each(|service| service.endpoints.sort_by(|a, b| a.schema.code.cmp(&b.schema.code)));
 
     // Sort enums and structs by their default ordering
     enums.sort();

@@ -121,10 +121,7 @@ fn format_type(field_name: &str, ty: &Type, datamodels: bool) -> String {
                 variants.iter().map(|v| &v.name).join(", ")
             )
         }
-        Type::EnumRef {
-            name,
-            prefixed_name,
-        } => {
+        Type::EnumRef { name, prefixed_name } => {
             format!(
                 "{}: {}",
                 field_name.to_case(Case::Camel),
@@ -151,11 +148,7 @@ fn format_type(field_name: &str, ty: &Type, datamodels: bool) -> String {
         //         )
         //     )
         // }
-        _ => format!(
-            "{}: {}",
-            field_name.to_case(Case::Camel),
-            ty.to_rust_ref(false)
-        ),
+        _ => format!("{}: {}", field_name.to_case(Case::Camel), ty.to_rust_ref(false)),
     }
 }
 
@@ -191,10 +184,7 @@ pub fn gen_md_docs(data: &Data) -> eyre::Result<()> {
             .join("\n\n"),
         data.enums
             .iter()
-            .map(|e| format!(
-                "enum {:#}\n",
-                format_type(&e.inner.to_rust_ref(false), &e.inner, true)
-            ))
+            .map(|e| format!("enum {:#}\n", format_type(&e.inner.to_rust_ref(false), &e.inner, true)))
             .join("\n\n")
     )?;
     for s in &data.services {
@@ -249,10 +239,7 @@ pub fn gen_systemd_services(data: &Data, app_name: &str, user: &str) -> eyre::Re
 }
 
 pub fn get_error_messages(root: &Path) -> eyre::Result<ErrorMessages> {
-    let def_filename = root
-        .join("docs")
-        .join("error_codes")
-        .join("error_codes.json");
+    let def_filename = root.join("docs").join("error_codes").join("error_codes.json");
 
     // Ensure the parent directories exist, and create the file
     if let Some(parent) = def_filename.parent() {
