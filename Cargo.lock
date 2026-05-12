@@ -841,7 +841,7 @@ dependencies = [
 
 [[package]]
 name = "endpoint-gen"
-version = "1.5.1"
+version = "1.5.2"
 dependencies = [
  "clap",
  "convert_case 0.10.0",
