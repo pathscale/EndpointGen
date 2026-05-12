@@ -250,7 +250,7 @@ pub fn gen_model_rs(data: &Data) -> eyre::Result<()> {
         use serde::*;
         use strum_macros::{{Display, EnumString}};
         use uuid::Uuid;
-        use psc_nanoid::{{Nanoid, Base62Alphabet}};
+        use psc_nanoid::{{Nanoid, alphabet::Base62Alphabet}};
         use std::net::IpAddr;
         {worktable_imports}
         {json_schema_imports}
