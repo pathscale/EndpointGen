@@ -251,18 +251,15 @@ fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
                     ele
                 })),
             Definition::Enum(enum_type) => enums.push(enum_type),
-            Definition::EnumList(enums_definition) => enums.extend(
-                enums_definition
-                    .enum_elements
-                    .into_iter()
-                    .map(|mut ele| {
-                        if !ele.config.override_parent {
-                            ele.config = enums_definition.config.clone();
-                        }
+            Definition::EnumList(enums_definition) => {
+                enums.extend(enums_definition.enum_elements.into_iter().map(|mut ele| {
+                    if !ele.config.override_parent {
+                        ele.config = enums_definition.config.clone();
+                    }
 
-                        ele
-                    }),
-            ),
+                    ele
+                }))
+            }
             Definition::Struct(struct_element) => structs.push(struct_element),
             Definition::StructList(structs_definition) => structs.extend(
                 structs_definition
