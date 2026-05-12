@@ -203,7 +203,7 @@ pub fn gen_model_rs(data: &Data) -> eyre::Result<()> {
         || data.structs.iter().any(|s| s.config.worktable_support)
     {
         r#"use worktable::prelude::*;
-           use rkyv::Archive; 
+           use rkyv::Archive;
         "#
     } else {
         ""
@@ -300,8 +300,7 @@ impl From<EnumErrorCode> for ErrorCode {{
                         .flat_map(Type::try_unwrap)
                         .collect::<Vec<_>>(),
                 ]
-                .concat()
-                .into_iter(),
+                .concat(),
             );
         }
     }
@@ -438,7 +437,7 @@ mod tests {
         let re = Regex::new(r"=\s*(\d+)").unwrap();
 
         // Test with newline between number and comma
-        let text1 = r#"    /// 
+        let text1 = r#"    ///
       LoginStep2 = 10003
   ,"#;
         let caps1 = re.captures(text1).expect("Should match");

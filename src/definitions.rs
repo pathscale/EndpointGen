@@ -188,7 +188,11 @@ impl ToRust for EnumElement {
                 #[repr(u8)]
                 {input}
             "#,
-                self.config.json_schema_gen.then(|| "JsonSchema,").unwrap_or_default()
+                if self.config.json_schema_gen {
+                    "JsonSchema,"
+                } else {
+                    Default::default()
+                }
             )
         } else {
             Type::add_default_enum_derives(input)
@@ -324,7 +328,11 @@ impl ToRust for StructElement {
                 #[serde(rename_all = "camelCase")]
                 {input}
             "#,
-                self.config.json_schema_gen.then(|| "JsonSchema,").unwrap_or_default()
+                if self.config.json_schema_gen {
+                    "JsonSchema,"
+                } else {
+                    Default::default()
+                }
             )
         } else {
             Type::add_default_struct_derives(input)
