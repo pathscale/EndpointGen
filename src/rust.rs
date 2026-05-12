@@ -40,6 +40,7 @@ impl ToRust for Type {
             Type::String => "String".to_owned(),
             Type::Bytea => "Vec<u8>".to_owned(),
             Type::UUID => "Uuid".to_owned(),
+            Type::NanoId { len } => format!("Nanoid<{len}, Base62Alphabet>"),
             Type::IpAddr => "IpAddr".to_owned(),
             Type::Enum { name, .. } => format!("Enum{}", name.to_case(Case::Pascal),),
             Type::EnumRef {
@@ -249,6 +250,7 @@ pub fn gen_model_rs(data: &Data) -> eyre::Result<()> {
         use serde::*;
         use strum_macros::{{Display, EnumString}};
         use uuid::Uuid;
+        use psc_nanoid::{{Nanoid, alphabet::Base62Alphabet}};
         use std::net::IpAddr;
         {worktable_imports}
         {json_schema_imports}
