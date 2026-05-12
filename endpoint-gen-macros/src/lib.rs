@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput};
+use syn::{DeriveInput, parse_macro_input};
 
 /// Derive macro ensures that the type manually implements GenElement<Self>.
 /// This enforces that any type used as a Definition variant has proper validation logic.
