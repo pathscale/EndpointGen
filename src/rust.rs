@@ -43,10 +43,7 @@ impl ToRust for Type {
             Type::NanoId { len } => format!("Nanoid<{len}, Base62Alphabet>"),
             Type::IpAddr => "IpAddr".to_owned(),
             Type::Enum { name, .. } => format!("Enum{}", name.to_case(Case::Pascal),),
-            Type::EnumRef {
-                name,
-                prefixed_name,
-            } => {
+            Type::EnumRef { name, prefixed_name } => {
                 if *prefixed_name {
                     format!("Enum{}", name.to_case(Case::Pascal),)
                 } else {
@@ -62,8 +59,7 @@ impl ToRust for Type {
     }
 
     fn to_rust_decl(&self, serde_with: bool, add_derives: bool) -> String {
-        let code_regex =
-            regex::Regex::new(r"=\s*(\d+)").expect("Error building regex to extract endpoint code");
+        let code_regex = regex::Regex::new(r"=\s*(\d+)").expect("Error building regex to extract endpoint code");
 
         match self {
             Type::Struct { name, fields } => {
@@ -72,9 +68,7 @@ impl ToRust for Type {
                     let serde_with_opt = match &x.ty {
                         Type::BlockchainDecimal => "rust_decimal::serde::str",
                         Type::BlockchainAddress if serde_with => "WithBlockchainAddress",
-                        Type::BlockchainTransactionHash if serde_with => {
-                            "WithBlockchainTransactionHash"
-                        }
+                        Type::BlockchainTransactionHash if serde_with => "WithBlockchainTransactionHash",
                         // TODO: handle optional decimals
                         // Type::Optional(t) if matches!(**t, Type::BlockchainDecimal) => {
                         //     "WithBlockchainDecimal"
@@ -101,16 +95,9 @@ impl ToRust for Type {
                 });
                 let input = format!("pub struct {} {{{}}}", name, fields.join(","));
 
-                if add_derives {
-                    self.add_derives(input)
-                } else {
-                    input
-                }
+                if add_derives { self.add_derives(input) } else { input }
             }
-            Type::Enum {
-                name,
-                variants: fields,
-            } => {
+            Type::Enum { name, variants: fields } => {
                 let mut fields = fields
                     .iter()
                     .map(|x| {
@@ -133,15 +120,11 @@ impl ToRust for Type {
                         let code_a = {
                             match code_regex.captures(a) {
                                 Some(code) => code[1].parse::<u64>().unwrap_or_else(|err| {
-                                    eprintln!(
-                                        "Sorting error: {err}: Rust output may not be sorted correctly"
-                                    );
+                                    eprintln!("Sorting error: {err}: Rust output may not be sorted correctly");
                                     0
                                 }),
                                 None => {
-                                    eprintln!(
-                                        "Sorting error: Rust output may not be sorted correctly"
-                                    );
+                                    eprintln!("Sorting error: Rust output may not be sorted correctly");
                                     0
                                 }
                             }
@@ -149,18 +132,12 @@ impl ToRust for Type {
 
                         let code_b = {
                             match code_regex.captures(b) {
-                                Some(code) => {
-                                    code[1].parse::<u64>().unwrap_or_else(|err| {
-                                        eprintln!(
-                                        "Sorting error: {err}: Rust output may not be sorted correctly"
-                                    );
-                                        0
-                                    })
-                                }
+                                Some(code) => code[1].parse::<u64>().unwrap_or_else(|err| {
+                                    eprintln!("Sorting error: {err}: Rust output may not be sorted correctly");
+                                    0
+                                }),
                                 None => {
-                                    eprintln!(
-                                        "Sorting error: Rust output may not be sorted correctly"
-                                    );
+                                    eprintln!("Sorting error: Rust output may not be sorted correctly");
                                     0
                                 }
                             }
@@ -310,14 +287,8 @@ impl From<EnumErrorCode> for ErrorCode {{
     let mut endpoint_reqres_types = BTreeSet::new();
     for s in &data.services {
         for e in &s.endpoints {
-            let req = Type::struct_(
-                format!("{}Request", e.schema.name),
-                e.schema.parameters.clone(),
-            );
-            let resp = Type::struct_(
-                format!("{}Response", e.schema.name),
-                e.schema.returns.clone(),
-            );
+            let req = Type::struct_(format!("{}Request", e.schema.name), e.schema.parameters.clone());
+            let resp = Type::struct_(format!("{}Response", e.schema.name), e.schema.returns.clone());
             endpoint_reqres_types.extend(
                 [
                     collect_rust_recursive_types(req),
@@ -383,19 +354,13 @@ fn resolve_roles_ids(endpoint_roles: &Vec<String>, all_enums: &Vec<EnumElement>)
 
     let mut roles_ids = vec![];
     for role in endpoint_roles {
-        let (role_enum_name, role_variant_name) =
-            role.split_once("::").unwrap_or(("", role.as_str()));
+        let (role_enum_name, role_variant_name) = role.split_once("::").unwrap_or(("", role.as_str()));
 
         if let Some(role_enum_variants) = all_enums_typed.get(role_enum_name) {
-            if let Some(role_variant_in_endpoint) = role_enum_variants
-                .iter()
-                .find(|v| v.name == role_variant_name)
-            {
+            if let Some(role_variant_in_endpoint) = role_enum_variants.iter().find(|v| v.name == role_variant_name) {
                 roles_ids.push(role_variant_in_endpoint.value);
             } else {
-                eprintln!(
-                    "Warning: Role variant '{role_variant_name}' not found in enum '{role_enum_name}'"
-                );
+                eprintln!("Warning: Role variant '{role_variant_name}' not found in enum '{role_enum_name}'");
             }
         } else {
             eprintln!("Warning: Role enum '{role_enum_name}' not found");

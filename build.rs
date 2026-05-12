@@ -12,17 +12,14 @@ fn main() {
     let toml_value: toml::Value = toml::from_str(&content).expect("Failed to parse Cargo.toml");
 
     // Extract the endpoint-libs version from dependencies
-    let libs_version = extract_endpoint_libs_version(&toml_value)
-        .expect("Failed to find endpoint-libs in Cargo.toml dependencies");
+    let libs_version =
+        extract_endpoint_libs_version(&toml_value).expect("Failed to find endpoint-libs in Cargo.toml dependencies");
 
     // Convert to semver compatible format using caret notation (^X.Y.Z)
     let libs_requirement = format!("^{}", libs_version);
 
     // Set as compile-time environment variable
-    println!(
-        "cargo:rustc-env=ENDPOINT_LIBS_REQUIREMENT={}",
-        libs_requirement
-    );
+    println!("cargo:rustc-env=ENDPOINT_LIBS_REQUIREMENT={}", libs_requirement);
 }
 
 fn extract_endpoint_libs_version(toml: &toml::Value) -> Option<String> {
