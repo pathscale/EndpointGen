@@ -273,12 +273,12 @@ fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
     }
 
     // Sort services by ID
-    services.sort_by(|a, b| a.id.cmp(&b.id));
+    services.sort_by_key(|a| a.id);
 
     // Sort the endpoints of each service by their codes
     services
         .iter_mut()
-        .for_each(|service| service.endpoints.sort_by(|a, b| a.schema.code.cmp(&b.schema.code)));
+        .for_each(|service| service.endpoints.sort_by_key(|a| a.schema.code));
 
     // Sort enums and structs by their default ordering
     enums.sort();
