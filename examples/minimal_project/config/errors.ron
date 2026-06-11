@@ -1,0 +1,14 @@
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+
+Config(
+    definition: ErrorCodeList(
+        codes: [
+            ErrorCodeSchema(
+                name: "TooManyLoginAttempts",
+                code: 200001,
+                description: "The account has too many failed login attempts.",
+            ),
+        ],
+    ),
+)
