@@ -17,6 +17,7 @@ pub enum Definition {
     EndpointSchemaList(EndpointSchemaListDefinition),
     Enum(EnumElement),
     EnumList(EnumListDefinition),
+    ErrorCodeList(ErrorCodeListDefinition),
     Struct(StructElement),
     StructList(StructListDefinition),
 }
@@ -26,6 +27,7 @@ impl Definition {
         match self {
             Definition::Enum(e) => e.validate_element(),
             Definition::EnumList(list) => list.validate_element(),
+            Definition::ErrorCodeList(list) => list.validate_element(),
             Definition::Struct(s) => s.validate_element(),
             Definition::StructList(list) => list.validate_element(),
             Definition::EndpointSchema(schema) => schema.validate_element(),
@@ -39,6 +41,35 @@ where
     T: GenElement<T>,
 {
     fn validate_element(&self) -> eyre::Result<()>;
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Hash, PartialEq, PartialOrd, Eq, Ord)]
+pub struct ErrorCodeSchema {
+    pub name: String,
+    pub code: i64,
+    #[serde(default)]
+    pub description: String,
+}
+
+impl ErrorCodeSchema {
+    pub fn new(name: impl Into<String>, code: i64, description: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            code,
+            description: description.into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Hash, PartialEq, PartialOrd, Eq, Ord, DefinitionVariant)]
+pub struct ErrorCodeListDefinition {
+    pub codes: Vec<ErrorCodeSchema>,
+}
+
+impl GenElement<ErrorCodeListDefinition> for ErrorCodeListDefinition {
+    fn validate_element(&self) -> eyre::Result<()> {
+        Ok(())
+    }
 }
 
 /// Wraps the [Type::Enum] variant with extra config
@@ -395,6 +426,7 @@ impl From<EndpointSchemaElement> for EndpointSchema {
             description: val.schema.description,
             json_schema: val.schema.json_schema,
             roles: val.schema.roles,
+            errors: val.schema.errors,
         }
     }
 }

@@ -20,6 +20,49 @@ Config(
                     description: "A simple test endpoint",
                     json_schema: (),
                     roles: ["UserRole::Superadmin"],
+                    errors: [],
+                ),
+            ),
+            EndpointSchemaElement(
+                schema: (
+                    name: "Login",
+                    code: 10001,
+                    parameters: [
+                        Field(name: "username", ty: String),
+                        Field(name: "password", ty: String),
+                    ],
+                    returns: [
+                        Field(name: "token", ty: String),
+                    ],
+                    stream_response: None,
+                    description: "Authenticate user",
+                    json_schema: (),
+                    roles: [],
+                    errors: [
+                        EndpointErrorSchema(
+                            name: "WrongPassword",
+                            code: "ErrorCode::Unauthorized",
+                            message: "Wrong password",
+                            fields: [],
+                        ),
+                        EndpointErrorSchema(
+                            name: "PasswordTooShort",
+                            code: "ErrorCode::BadRequest",
+                            message: "Password too short",
+                            fields: [
+                                Field(name: "min_length", ty: Int32),
+                                Field(name: "actual_length", ty: Int32),
+                            ],
+                        ),
+                        EndpointErrorSchema(
+                            name: "TooManyLoginAttempts",
+                            code: "ErrorCode::TooManyLoginAttempts",
+                            message: "Too many login attempts",
+                            fields: [
+                                Field(name: "retry_after_ms", ty: Int64),
+                            ],
+                        ),
+                    ],
                 ),
             ),
         ],
