@@ -98,6 +98,28 @@ stream_response: Some(DataTable(
 )),
 ```
 
+Endpoint errors can declare the public handler errors generated for an endpoint. Error codes use the same quoted enum-path style as roles and must reference `ErrorCode`:
+
+```ron
+errors: [
+    EndpointErrorSchema(
+        name: "WrongPassword",
+        code: "ErrorCode::WrongPassword",
+        message: "Wrong password",
+        fields: [],
+    ),
+    EndpointErrorSchema(
+        name: "PasswordTooShort",
+        code: "ErrorCode::PasswordTooShort",
+        message: "Password too short",
+        fields: [
+            Field(name: "min_length", ty: Int32),
+            Field(name: "actual_length", ty: Int32),
+        ],
+    ),
+],
+```
+
 #### Available field types
 
 | Type | Description |
@@ -148,6 +170,26 @@ Config(
 ### Structs
 
 Shared struct types can be declared with `Struct` or `StructList` and will be emitted as top-level types in the generated model.
+
+### Error Codes
+
+Built-in `endpoint-libs` error codes such as `ErrorCode::BadRequest` and `ErrorCode::Unauthorized` are always available. Project-specific codes are declared with `ErrorCodeList`, commonly in `config/errors.ron`:
+
+```ron
+Config(
+    definition: ErrorCodeList(
+        codes: [
+            ErrorCodeSchema(
+                name: "WrongPassword",
+                code: 200001,
+                description: "The submitted password does not match the user account.",
+            ),
+        ],
+    ),
+)
+```
+
+The generated model emits these as `EnumErrorCode`, and generation fails if an endpoint references an unknown `ErrorCode::Variant`.
 
 ### JSON Schema Generation
 

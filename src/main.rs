@@ -8,8 +8,9 @@ use std::{
 use clap::Parser;
 use convert_case::{Case, Casing};
 use endpoint_gen::{
-    definitions::{Definition, EndpointSchemaElement, EnumElement, GenService, StructElement},
+    definitions::{Definition, EndpointSchemaElement, EnumElement, ErrorCodeSchema, GenService, StructElement},
     docs::{self, Data},
+    error_codes::{build_error_code_catalog, validate_endpoint_error_codes, validate_reserved_enum_names},
     rust,
 };
 use endpoint_libs::model::Type;
@@ -68,6 +69,7 @@ fn main() -> Result<()> {
         services: input_objects.services,
         enums: input_objects.enums,
         structs: input_objects.structs,
+        error_codes: input_objects.error_codes,
     };
 
     let docs_data = format_for_docs(&data);
@@ -75,7 +77,7 @@ fn main() -> Result<()> {
     docs::gen_services_docs(&docs_data)?;
     docs::gen_md_docs(&docs_data)?;
     rust::gen_model_rs(&data)?;
-    docs::gen_error_message_md(&data.project_root)?;
+    docs::gen_error_message_md(&data.project_root, &data.error_codes)?;
     Ok(())
 }
 
@@ -83,6 +85,11 @@ fn main() -> Result<()> {
 /// This allows us to still have snake case field names in our rust code, but FE facing docs can remain camel case
 /// We already use serde camelCase renaming, so this should have no effect on serializing/deserializing
 fn format_for_docs(data: &Data) -> Data {
+    fn camel_case_field(mut field: endpoint_libs::model::Field) -> endpoint_libs::model::Field {
+        field.name = field.name.to_case(Case::Camel);
+        field
+    }
+
     let formatted_services = data
         .services
         .clone()
@@ -93,25 +100,19 @@ fn format_for_docs(data: &Data) -> Data {
                 .into_iter()
                 .map(|mut endpoint| {
                     if endpoint.config.snake_case_fields {
-                        endpoint.schema.parameters = endpoint
+                        endpoint.schema.parameters =
+                            endpoint.schema.parameters.into_iter().map(camel_case_field).collect();
+
+                        endpoint.schema.returns = endpoint.schema.returns.into_iter().map(camel_case_field).collect();
+
+                        endpoint.schema.errors = endpoint
                             .schema
-                            .parameters
+                            .errors
                             .into_iter()
-                            .map(|mut param| {
-                                param.name = param.name.to_case(Case::Camel);
-
-                                param
-                            })
-                            .collect();
-
-                        endpoint.schema.returns = endpoint
-                            .schema
-                            .returns
-                            .into_iter()
-                            .map(|mut param| {
-                                param.name = param.name.to_case(Case::Camel);
-
-                                param
+                            .map(|mut error| {
+                                error.name = error.name.to_case(Case::Camel);
+                                error.fields = error.fields.into_iter().map(camel_case_field).collect();
+                                error
                             })
                             .collect();
                     }
@@ -130,17 +131,9 @@ fn format_for_docs(data: &Data) -> Data {
         .map(|mut struct_element| {
             if struct_element.config.snake_case_fields {
                 struct_element.inner = match struct_element.inner {
-                    Type::Struct { name, fields } => Type::struct_(
-                        name,
-                        fields
-                            .into_iter()
-                            .map(|mut field| {
-                                field.name = field.name.to_case(Case::Camel);
-
-                                field
-                            })
-                            .collect(),
-                    ),
+                    Type::Struct { name, fields } => {
+                        Type::struct_(name, fields.into_iter().map(camel_case_field).collect())
+                    }
                     _ => unreachable!(),
                 };
 
@@ -157,6 +150,7 @@ fn format_for_docs(data: &Data) -> Data {
         services: formatted_services,
         enums: data.enums.clone(),
         structs: formatted_structs,
+        error_codes: data.error_codes.clone(),
     }
 }
 
@@ -187,6 +181,7 @@ fn process_input_files(dir: PathBuf) -> eyre::Result<Vec<Definition>> {
 
     let mut rust_configs: Vec<Definition> = vec![];
     let mut valid_config_files_counter = 0u32;
+    let mut config_errors = vec![];
     for path in paths {
         match process_file(path.as_path()) {
             Ok(rust_config) => {
@@ -197,10 +192,14 @@ fn process_input_files(dir: PathBuf) -> eyre::Result<Vec<Definition>> {
             }
             Err(err) => match path.file_name() {
                 Some(name) if name.to_str().unwrap() == "version.toml" => (),
-                Some(_) => eprintln!("Error processing file: {path:?}, Error: {err}"),
+                Some(_) => config_errors.push(format!("{path:?}: {err}")),
                 None => (),
             },
         }
+    }
+
+    if !config_errors.is_empty() {
+        bail!("Error processing RON config files:\n{}", config_errors.join("\n"));
     }
 
     // If we haven't found any files, it's better to just return here immediately
@@ -215,6 +214,7 @@ struct InputObjects {
     services: Vec<GenService>,
     enums: Vec<EnumElement>,
     structs: Vec<StructElement>,
+    error_codes: Vec<ErrorCodeSchema>,
 }
 
 fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
@@ -226,6 +226,7 @@ fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
 
     let mut enums: Vec<EnumElement> = vec![];
     let mut structs: Vec<StructElement> = vec![];
+    let mut custom_error_codes: Vec<ErrorCodeSchema> = vec![];
 
     for config in rust_configs {
         match config {
@@ -253,6 +254,7 @@ fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
                     ele
                 }))
             }
+            Definition::ErrorCodeList(error_code_list) => custom_error_codes.extend(error_code_list.codes),
             Definition::Struct(struct_element) => structs.push(struct_element),
             Definition::StructList(structs_definition) => {
                 structs.extend(structs_definition.struct_elements.into_iter().map(|mut ele| {
@@ -284,10 +286,15 @@ fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
     enums.sort();
     structs.sort();
 
+    let error_codes = build_error_code_catalog(custom_error_codes)?;
+    validate_reserved_enum_names(&enums)?;
+    validate_endpoint_error_codes(&services, &error_codes)?;
+
     Ok(InputObjects {
         services,
         enums,
         structs,
+        error_codes,
     })
 }
 
@@ -352,4 +359,56 @@ fn check_compatibility(version_config: VersionConfig) -> eyre::Result<()> {
 fn get_crate_version() -> &'static str {
     // Get the crate version from the Cargo.toml at compile time
     env!("CARGO_PKG_VERSION")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use endpoint_gen::definitions::RustGenConfig;
+    use endpoint_libs::model::{EndpointErrorCodeRef, EndpointErrorSchema, EndpointSchema, Field};
+
+    #[test]
+    fn format_for_docs_camel_cases_endpoint_error_fields() {
+        let data = Data {
+            project_root: PathBuf::new(),
+            output_dir: PathBuf::new(),
+            services: vec![GenService::new(
+                "test_service".to_string(),
+                1,
+                vec![EndpointSchemaElement {
+                    frontend_facing: true,
+                    config: RustGenConfig {
+                        snake_case_fields: true,
+                        ..Default::default()
+                    },
+                    schema: EndpointSchema::new(
+                        "Login",
+                        10001,
+                        vec![Field::new("user_name", Type::String)],
+                        vec![Field::new("access_token", Type::String)],
+                    )
+                    .with_errors(vec![EndpointErrorSchema {
+                        name: "PasswordTooShort".to_string(),
+                        code: EndpointErrorCodeRef::new("BadRequest"),
+                        message: "Password too short".to_string(),
+                        fields: vec![
+                            Field::new("min_length", Type::Int32),
+                            Field::new("actual_length", Type::Int32),
+                        ],
+                    }]),
+                }],
+            )],
+            enums: vec![],
+            structs: vec![],
+            error_codes: vec![],
+        };
+
+        let docs = format_for_docs(&data);
+        let endpoint = &docs.services[0].endpoints[0].schema;
+
+        assert_eq!(endpoint.parameters[0].name, "userName");
+        assert_eq!(endpoint.returns[0].name, "accessToken");
+        assert_eq!(endpoint.errors[0].fields[0].name, "minLength");
+        assert_eq!(endpoint.errors[0].fields[1].name, "actualLength");
+    }
 }

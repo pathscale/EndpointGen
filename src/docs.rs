@@ -1,13 +1,12 @@
-use crate::definitions::{EnumElement, GenService, StructElement};
+use crate::definitions::{EnumElement, ErrorCodeSchema, GenService, StructElement};
 use crate::rust::ToRust;
 use crate::service::get_systemd_service;
 use convert_case::{Case, Casing};
 use endpoint_libs::model::{EndpointSchema, Service, Type};
 use eyre::Context;
 use itertools::Itertools;
-use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::fs::{File, OpenOptions, create_dir_all};
+use std::fs::{File, create_dir_all};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -17,6 +16,7 @@ pub struct Data {
     pub services: Vec<GenService>,
     pub enums: Vec<EnumElement>,
     pub structs: Vec<StructElement>,
+    pub error_codes: Vec<ErrorCodeSchema>,
 }
 
 pub fn gen_services_docs(docs: &Data) -> eyre::Result<()> {
@@ -47,12 +47,7 @@ pub fn gen_services_docs(docs: &Data) -> eyre::Result<()> {
         .filter(|service| !service.endpoints.is_empty())
         .collect::<Vec<Service>>();
 
-    let enums: Vec<Type> = docs
-        .enums
-        .clone()
-        .into_iter()
-        .map(|enum_element| enum_element.inner)
-        .collect();
+    let enums = doc_enums(docs);
 
     let structs: Vec<Type> = docs
         .structs
@@ -70,6 +65,33 @@ pub fn gen_services_docs(docs: &Data) -> eyre::Result<()> {
         }),
     )?;
     Ok(())
+}
+
+fn error_code_enum(codes: &[ErrorCodeSchema]) -> Type {
+    Type::enum_(
+        "ErrorCode",
+        codes
+            .iter()
+            .map(|code| {
+                endpoint_libs::model::EnumVariant::new_with_description(
+                    code.name.to_case(Case::Pascal),
+                    code.description.clone(),
+                    code.code,
+                )
+            })
+            .collect(),
+    )
+}
+
+fn doc_enums(data: &Data) -> Vec<Type> {
+    let mut enums: Vec<Type> = data
+        .enums
+        .clone()
+        .into_iter()
+        .map(|enum_element| enum_element.inner)
+        .collect();
+    enums.push(error_code_enum(&data.error_codes));
+    enums
 }
 
 /// Wraps ` ` around the given string
@@ -152,6 +174,27 @@ fn format_type(field_name: &str, ty: &Type, datamodels: bool) -> String {
     }
 }
 
+fn format_errors(errors: &[endpoint_libs::model::EndpointErrorSchema]) -> String {
+    errors
+        .iter()
+        .map(|error| {
+            let fields = if error.fields.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    " {{{}}}",
+                    error
+                        .fields
+                        .iter()
+                        .map(|field| format!("{}: {}", field.name.to_case(Case::Camel), field.ty.to_rust_ref(false)))
+                        .join(", ")
+                )
+            };
+            format!("{}({}){}", error.name, error.code, fields)
+        })
+        .join(", ")
+}
+
 pub fn gen_md_docs(data: &Data) -> eyre::Result<()> {
     let docs_filename = data.project_root.join("docs").join("README.md");
     let mut docs_file = File::create(docs_filename)?;
@@ -184,7 +227,9 @@ pub fn gen_md_docs(data: &Data) -> eyre::Result<()> {
             .join("\n\n"),
         data.enums
             .iter()
-            .map(|e| format!("enum {:#}\n", format_type(&e.inner.to_rust_ref(false), &e.inner, true)))
+            .map(|e| e.inner.clone())
+            .chain(std::iter::once(error_code_enum(&data.error_codes)))
+            .map(|e| format!("enum {:#}\n", format_type(&e.to_rust_ref(false), &e, true)))
             .join("\n\n")
     )?;
     for s in &data.services {
@@ -194,14 +239,14 @@ pub fn gen_md_docs(data: &Data) -> eyre::Result<()> {
 ## {} Server
 ID: {}
 ### Endpoints
-|Code|Name|Parameters|Response|Description|FE Facing|
-|-----------|-----------|----------|--------|-----------|-----------|"#,
+|Code|Name|Parameters|Response|Description|FE Facing|Errors|
+|-----------|-----------|----------|--------|-----------|-----------|-----------|"#,
             s.name, s.id
         )?;
         for e in &s.endpoints {
             writeln!(
                 &mut docs_file,
-                "|{}|{}|{}|{}|{}|{}|",
+                "|{}|{}|{}|{}|{}|{}|{}|",
                 e.schema.code,
                 e.schema.name,
                 e.schema
@@ -216,6 +261,7 @@ ID: {}
                     .join(", "),
                 e.schema.description,
                 e.frontend_facing,
+                format_errors(&e.schema.errors),
             )?;
         }
     }
@@ -238,74 +284,23 @@ pub fn gen_systemd_services(data: &Data, app_name: &str, user: &str) -> eyre::Re
     Ok(())
 }
 
-pub fn get_error_messages(root: &Path) -> eyre::Result<ErrorMessages> {
-    let def_filename = root.join("docs").join("error_codes").join("error_codes.json");
+pub fn gen_error_message_md(root: &Path, codes: &[ErrorCodeSchema]) -> eyre::Result<()> {
+    let doc_filename = root.join("docs").join("error_codes").join("error_codes.md");
 
-    // Ensure the parent directories exist, and create the file
-    if let Some(parent) = def_filename.parent() {
+    if let Some(parent) = doc_filename.parent() {
         std::fs::create_dir_all(parent)?;
     }
 
-    if !def_filename.exists() {
-        let _file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(&def_filename)?;
-    }
-
-    // Read the file contents
-    let def_file = std::fs::read(&def_filename)?;
-
-    if def_file.is_empty() {
-        Ok(ErrorMessages {
-            language: String::from("TODO"),
-            codes: vec![ErrorMessage {
-                code: 0,
-                symbol: String::from("XXX"),
-                message: String::from("Please populate error_codes.json"),
-                source: String::from("None"),
-            }],
-        })
-    } else {
-        let definitions: ErrorMessages = serde_json::from_slice(&def_file)?;
-        Ok(definitions)
-    }
-}
-
-pub fn gen_error_message_md(root: &Path) -> eyre::Result<()> {
-    let definitions = get_error_messages(root)?;
-    let doc_filename = root.join("docs").join("error_codes").join("error_codes.md");
     let mut doc_file = File::create(doc_filename)?;
     writeln!(
         &mut doc_file,
         r#"
 # Error Messages
-|Error Code|Error Symbol|Error Message|Error Source|
-|----------|------------|-------------|------------|"#,
+|Error Code|Error Name|Description|
+|----------|----------|-----------|"#,
     )?;
-    for item in definitions.codes {
-        writeln!(
-            &mut doc_file,
-            "|{}|{}|{}|{}|",
-            item.code, item.symbol, item.message, item.source
-        )?;
+    for item in codes {
+        writeln!(&mut doc_file, "|{}|{}|{}|", item.code, item.name, item.description)?;
     }
     Ok(())
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ErrorMessages {
-    pub language: String,
-    pub codes: Vec<ErrorMessage>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ErrorMessage {
-    pub code: i64,
-    #[serde(default)]
-    pub symbol: String,
-    pub message: String,
-    #[serde(default)]
-    pub source: String,
 }

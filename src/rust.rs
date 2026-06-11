@@ -1,7 +1,7 @@
 use crate::definitions::EnumElement;
-use crate::docs::{self, Data};
+use crate::docs::Data;
 use convert_case::{Case, Casing};
-use endpoint_libs::model::{EnumVariant, Field, Type};
+use endpoint_libs::model::{EndpointErrorSchema, EnumVariant, Type};
 use eyre::bail;
 use itertools::Itertools;
 use std::collections::{BTreeSet, HashMap};
@@ -191,6 +191,95 @@ pub fn collect_rust_recursive_types(t: Type) -> Vec<Type> {
     }
 }
 
+fn endpoint_error_enum_name(endpoint_name: &str) -> String {
+    format!("{}Error", endpoint_name.to_case(Case::Pascal))
+}
+
+fn endpoint_error_variant_name(error: &EndpointErrorSchema) -> String {
+    error.name.to_case(Case::Pascal)
+}
+
+pub(crate) fn error_code_variant_name(name: &str) -> String {
+    name.to_case(Case::Pascal)
+}
+
+fn endpoint_error_code_expr(error: &EndpointErrorSchema) -> String {
+    format!("EnumErrorCode::{}", error_code_variant_name(error.code.variant()))
+}
+
+fn rust_string_literal(value: &str) -> String {
+    serde_json::to_string(value).expect("string serialization should not fail")
+}
+
+fn gen_endpoint_error_enum(
+    endpoint_name: &str,
+    errors: &[EndpointErrorSchema],
+    mut writer: impl Write,
+) -> eyre::Result<()> {
+    if errors.is_empty() {
+        return Ok(());
+    }
+
+    let enum_name = endpoint_error_enum_name(endpoint_name);
+    writeln!(
+        writer,
+        "#[derive(Serialize, Deserialize, Debug, Clone)]\npub enum {enum_name} {{"
+    )?;
+
+    for error in errors {
+        let variant_name = endpoint_error_variant_name(error);
+        if !error.message.is_empty() {
+            writeln!(writer, "    /// {}", error.message)?;
+        }
+        if error.fields.is_empty() {
+            writeln!(writer, "    {variant_name},")?;
+        } else {
+            let fields = error
+                .fields
+                .iter()
+                .map(|field| format!("{}: {}", field.name, field.ty.to_rust_ref(true)))
+                .join(", ");
+            writeln!(writer, "    {variant_name} {{ {fields} }},")?;
+        }
+    }
+
+    writeln!(writer, "}}\n")?;
+    writeln!(writer, "impl From<{enum_name}> for CustomError {{")?;
+    writeln!(writer, "    fn from(err: {enum_name}) -> Self {{")?;
+    writeln!(writer, "        match err {{")?;
+
+    for error in errors {
+        let variant_name = endpoint_error_variant_name(error);
+        let code_expr = endpoint_error_code_expr(error);
+        let message = &error.message;
+        if error.fields.is_empty() {
+            writeln!(
+                writer,
+                "            {enum_name}::{variant_name} => CustomError::new({code_expr}, {}),",
+                rust_string_literal(message)
+            )?;
+        } else {
+            let field_names = error.fields.iter().map(|field| field.name.as_str()).join(", ");
+            let json_fields = error
+                .fields
+                .iter()
+                .map(|field| format!(r#""{}": {}"#, field.name.to_case(Case::Camel), field.name))
+                .join(", ");
+            writeln!(
+                writer,
+                "            {enum_name}::{variant_name} {{ {field_names} }} => CustomError::with_details({code_expr}, {}, serde_json::json!({{ {json_fields} }})),",
+                rust_string_literal(message)
+            )?;
+        }
+    }
+
+    writeln!(writer, "        }}")?;
+    writeln!(writer, "    }}")?;
+    writeln!(writer, "}}\n")?;
+
+    Ok(())
+}
+
 pub fn gen_model_rs(data: &Data) -> eyre::Result<()> {
     let db_filename = data.output_dir.join("model.rs");
 
@@ -223,6 +312,7 @@ pub fn gen_model_rs(data: &Data) -> eyre::Result<()> {
         "use endpoint_libs::libs::error_code::ErrorCode;
         use endpoint_libs::libs::ws::*;
         use endpoint_libs::libs::types::*;
+        use endpoint_libs::libs::ws::toolbox::CustomError;
         use num_derive::FromPrimitive;
         use serde::*;
         use strum_macros::{{Display, EnumString}};
@@ -243,33 +333,11 @@ pub fn gen_model_rs(data: &Data) -> eyre::Result<()> {
     check_endpoint_codes(data, &mut model_file)?;
     dump_endpoint_schema(data, &mut model_file)?;
 
-    let errors = docs::get_error_messages(&data.project_root)?;
-    let rule = regex::Regex::new(r"\{[\w]+}")?;
-
-    for e in &errors.codes {
-        let name = format!("Error{}", e.symbol.to_case(Case::Pascal));
-        let s = Type::struct_(
-            name,
-            rule.find_iter(&e.message)
-                .map(|m| m.as_str())
-                .map(|s| s.trim_matches('{').trim_matches('}'))
-                .map(|s| Field::new(s.to_string(), Type::String))
-                .collect(),
-        );
-        writeln!(&mut model_file, "{}", s.to_rust_decl(true, true))?;
-    }
     let enum_ = Type::enum_(
         "ErrorCode",
-        errors
-            .codes
-            .into_iter()
-            .map(|x| {
-                EnumVariant::new_with_description(
-                    x.symbol.to_case(Case::Pascal),
-                    format!("{} {}", x.source, x.message),
-                    x.code,
-                )
-            })
+        data.error_codes
+            .iter()
+            .map(|x| EnumVariant::new_with_description(error_code_variant_name(&x.name), x.description.clone(), x.code))
             .collect(),
     );
     writeln!(&mut model_file, "{}", enum_.to_rust_decl(false, true))?;
@@ -299,6 +367,16 @@ impl From<EnumErrorCode> for ErrorCode {{
                         .into_iter()
                         .flat_map(Type::try_unwrap)
                         .collect::<Vec<_>>(),
+                    e.schema
+                        .errors
+                        .iter()
+                        .flat_map(|error| {
+                            error
+                                .fields
+                                .iter()
+                                .flat_map(|field| collect_rust_recursive_types(field.ty.clone()))
+                        })
+                        .collect::<Vec<_>>(),
                 ]
                 .concat(),
             );
@@ -306,6 +384,12 @@ impl From<EnumErrorCode> for ErrorCode {{
     }
     for s in endpoint_reqres_types {
         write!(&mut model_file, r#"{}"#, s.to_rust_decl(true, true))?;
+    }
+
+    for s in &data.services {
+        for endpoint in &s.endpoints {
+            gen_endpoint_error_enum(&endpoint.schema.name, &endpoint.schema.errors, &mut model_file)?;
+        }
     }
 
     for s in &data.services {
