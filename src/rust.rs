@@ -252,11 +252,12 @@ fn gen_endpoint_error_enum(
         let variant_name = endpoint_error_variant_name(error);
         let code_expr = endpoint_error_code_expr(error);
         let message = &error.message;
+        let kind = rust_string_literal(&variant_name);
         if error.fields.is_empty() {
             writeln!(
                 writer,
-                "            {enum_name}::{variant_name} => CustomError::new({code_expr}, {}),",
-                rust_string_literal(message)
+                "            {enum_name}::{variant_name} => CustomError::new({code_expr}).with_message({}).with_kind({kind}),",
+                rust_string_literal(message),
             )?;
         } else {
             let field_names = error.fields.iter().map(|field| field.name.as_str()).join(", ");
@@ -267,8 +268,8 @@ fn gen_endpoint_error_enum(
                 .join(", ");
             writeln!(
                 writer,
-                "            {enum_name}::{variant_name} {{ {field_names} }} => CustomError::with_details({code_expr}, {}, serde_json::json!({{ {json_fields} }})),",
-                rust_string_literal(message)
+                "            {enum_name}::{variant_name} {{ {field_names} }} => CustomError::new({code_expr}).with_message({}).with_kind({kind}).with_details(serde_json::json!({{ {json_fields} }})),",
+                rust_string_literal(message),
             )?;
         }
     }
