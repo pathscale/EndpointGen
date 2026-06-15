@@ -1,7 +1,7 @@
 # The version of the endpoint-gen binary that this project requires
 [binary]
-version = "1.5.2"
+version = "1.6.0"
 
 # The version of endpoint-libs that this project uses
 [libs]
-version = "1.8.0"
+version = "1.8.2"
