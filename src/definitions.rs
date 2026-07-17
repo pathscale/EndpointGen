@@ -13,7 +13,7 @@ use smart_serde_default::smart_serde_default;
 
 #[derive(Serialize, Deserialize)]
 pub enum Definition {
-    EndpointSchema(EndpointSchemaDefinition),
+    EndpointSchema(Box<EndpointSchemaDefinition>),
     EndpointSchemaList(EndpointSchemaListDefinition),
     Enum(EnumElement),
     EnumList(EnumListDefinition),
