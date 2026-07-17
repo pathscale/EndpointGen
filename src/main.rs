@@ -76,6 +76,9 @@ fn main() -> Result<()> {
 
     docs::gen_services_docs(&docs_data)?;
     docs::gen_md_docs(&docs_data)?;
+    // Raw data (not docs_data): MCP schemas camelCase field names themselves,
+    // matching the wire format regardless of the snake_case_fields config.
+    docs::gen_mcp_tools_json(&data)?;
     rust::gen_model_rs(&data)?;
     docs::gen_error_message_md(&data.project_root, &data.error_codes)?;
     Ok(())

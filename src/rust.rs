@@ -333,6 +333,7 @@ pub fn gen_model_rs(data: &Data) -> eyre::Result<()> {
     }
     check_endpoint_codes(data, &mut model_file)?;
     dump_endpoint_schema(data, &mut model_file)?;
+    dump_type_registry(data, &mut model_file)?;
 
     let enum_ = Type::enum_(
         "ErrorCode",
@@ -513,9 +514,126 @@ pub fn dump_endpoint_schema(data: &Data, mut writer: impl Write) -> eyre::Result
     Ok(())
 }
 
+/// Collects every shared type definition (structs, enums, the generated
+/// `ErrorCode` enum) that endpoint schemas may reference by name.
+pub fn shared_type_definitions(data: &Data) -> Vec<Type> {
+    let mut types: Vec<Type> = data.structs.iter().map(|s| s.inner.clone()).collect();
+    types.extend(data.enums.iter().map(|e| e.inner.clone()));
+    types.push(Type::enum_(
+        "ErrorCode",
+        data.error_codes
+            .iter()
+            .map(|x| EnumVariant::new_with_description(error_code_variant_name(&x.name), x.description.clone(), x.code))
+            .collect(),
+    ));
+    types
+}
+
+/// Emits `TYPE_DEFINITIONS` and `type_registry()` into the generated model:
+/// the full list of shared type definitions serialized as JSON (same embedding
+/// pattern as `WsRequest::SCHEMA`), plus a helper that deserializes them into
+/// an `endpoint_libs::model::TypeRegistry` for `WebsocketServer::enable_mcp()`.
+pub fn dump_type_registry(data: &Data, mut writer: impl Write) -> eyre::Result<()> {
+    let types = shared_type_definitions(data);
+    let serialized = serde_json::to_string_pretty(&types)?;
+    let code = format!(
+        r##"
+/// JSON-serialized shared struct/enum definitions referenced by endpoint schemas.
+pub const TYPE_DEFINITIONS: &'static str = r#"{serialized}"#;
+
+/// Builds the type registry over all shared definitions, for use with
+/// `WebsocketServer::enable_mcp()`.
+pub fn type_registry() -> endpoint_libs::model::TypeRegistry {{
+    let types: Vec<endpoint_libs::model::Type> =
+        serde_json::from_str(TYPE_DEFINITIONS).expect("Invalid embedded type definitions");
+    let mut registry = endpoint_libs::model::TypeRegistry::new();
+    registry.add_all(types.iter());
+    registry
+}}
+"##
+    );
+    writeln!(writer, "{code}")?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use regex::Regex;
+
+    use super::*;
+    use crate::definitions::{EndpointSchemaElement, RustGenConfig};
+    use endpoint_libs::model::{EndpointSchema, Field};
+
+    fn test_data() -> Data {
+        let user_info = Type::struct_(
+            "UserInfo",
+            vec![
+                Field::new("user_id", Type::Int64),
+                Field::new("role", Type::enum_ref("role", true)),
+            ],
+        );
+        let role = Type::enum_("role", vec![EnumVariant::new("Admin", 1)]);
+        Data {
+            project_root: std::path::PathBuf::new(),
+            output_dir: std::path::PathBuf::new(),
+            services: vec![crate::definitions::GenService::new(
+                "user".to_string(),
+                1,
+                vec![EndpointSchemaElement {
+                    frontend_facing: true,
+                    config: RustGenConfig::default(),
+                    schema: EndpointSchema::new(
+                        "UserGetProfile",
+                        10010,
+                        vec![Field::new("user_id", Type::Int64)],
+                        vec![Field::new("profile", Type::struct_ref("UserInfo"))],
+                    )
+                    .with_description("Fetches a user profile."),
+                }],
+            )],
+            enums: vec![crate::definitions::EnumElement {
+                config: RustGenConfig::default(),
+                inner: role,
+            }],
+            structs: vec![crate::definitions::StructElement {
+                config: RustGenConfig::default(),
+                inner: user_info,
+            }],
+            error_codes: vec![],
+        }
+    }
+
+    #[test]
+    fn type_registry_dump_round_trips() {
+        let data = test_data();
+        let mut out = Vec::new();
+        dump_type_registry(&data, &mut out).unwrap();
+        let code = String::from_utf8(out).unwrap();
+
+        assert!(code.contains("pub const TYPE_DEFINITIONS"));
+        assert!(code.contains("pub fn type_registry()"));
+
+        // Extract the embedded JSON and round-trip it the way the generated
+        // type_registry() will at runtime.
+        let start = code.find("r#\"").unwrap() + 3;
+        let end = code.find("\"#").unwrap();
+        let types: Vec<Type> = serde_json::from_str(&code[start..end]).unwrap();
+        // UserInfo struct + role enum + ErrorCode enum
+        assert_eq!(types.len(), 3);
+
+        let mut registry = endpoint_libs::model::TypeRegistry::new();
+        registry.add_all(types.iter());
+        assert!(registry.get_struct("UserInfo").is_some());
+        assert!(registry.get_enum("role").is_some());
+        assert!(registry.get_enum("ErrorCode").is_some());
+
+        // The registry must be able to resolve the endpoint's schemas.
+        let schema = &data.services[0].endpoints[0].schema;
+        let input = schema.to_mcp_input_schema(&registry).unwrap();
+        assert_eq!(input["required"], serde_json::json!(["userId"]));
+        let output = schema.to_mcp_output_schema(&registry).unwrap();
+        assert!(output["$defs"]["UserInfo"].is_object());
+    }
 
     #[test]
     fn test_extract_number_from_error_code() {
