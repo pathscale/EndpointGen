@@ -39,10 +39,10 @@ pub fn build_error_code_catalog(custom_error_codes: Vec<ErrorCodeSchema>) -> eyr
 
 pub fn validate_reserved_enum_names(enums: &[EnumElement]) -> eyre::Result<()> {
     for enum_element in enums {
-        if let Type::Enum { name, .. } = &enum_element.inner {
-            if name.to_case(Case::Pascal) == "ErrorCode" {
-                bail!("Enum name 'ErrorCode' is reserved for generated endpoint error codes");
-            }
+        if let Type::Enum { name, .. } = &enum_element.inner
+            && name.to_case(Case::Pascal) == "ErrorCode"
+        {
+            bail!("Enum name 'ErrorCode' is reserved for generated endpoint error codes");
         }
     }
 
