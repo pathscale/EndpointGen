@@ -268,6 +268,57 @@ ID: {}
     Ok(())
 }
 
+/// Writes `docs/<service>_mcp_tools.json` for each service: the MCP tool list
+/// (name, description, inputSchema, outputSchema) exactly as a server built
+/// from these schemas will report it via `tools/list`. Intended for review —
+/// schema changes show up as diffs in these files.
+pub fn gen_mcp_tools_json(data: &Data) -> eyre::Result<()> {
+    let docs_dir = data.project_root.join("docs");
+    create_dir_all(&docs_dir)?;
+
+    let mut registry = endpoint_libs::model::TypeRegistry::new();
+    registry.add_all(crate::rust::shared_type_definitions(data).iter());
+    for service in &data.services {
+        for endpoint in &service.endpoints {
+            registry.add_endpoint(&endpoint.schema);
+        }
+    }
+
+    for service in &data.services {
+        let tools = service
+            .endpoints
+            .iter()
+            .map(|endpoint| {
+                let schema = &endpoint.schema;
+                let mut tool = json!({
+                    "name": schema.tool_name(),
+                    "code": schema.code,
+                    "description": schema.description,
+                    "frontendFacing": endpoint.frontend_facing,
+                    "inputSchema": schema.to_mcp_input_schema(&registry).with_context(|| {
+                        format!("endpoint {} ({})", schema.name, schema.code)
+                    })?,
+                });
+                if !schema.returns.is_empty() {
+                    tool["outputSchema"] = schema
+                        .to_mcp_output_schema(&registry)
+                        .with_context(|| format!("endpoint {} ({})", schema.name, schema.code))?;
+                }
+                if schema.stream_response.is_some() {
+                    tool["streaming"] = json!(true);
+                }
+                Ok(tool)
+            })
+            .collect::<eyre::Result<Vec<_>>>()?;
+
+        let filename = docs_dir.join(format!("{}_mcp_tools.json", service.name));
+        let file = File::create(&filename)
+            .with_context(|| format!("Failed to create MCP tools file: {}", filename.display()))?;
+        serde_json::to_writer_pretty(file, &json!({ "tools": tools }))?;
+    }
+    Ok(())
+}
+
 pub fn gen_systemd_services(data: &Data, app_name: &str, user: &str) -> eyre::Result<()> {
     create_dir_all(data.project_root.join("etc").join("systemd"))?;
 
@@ -303,4 +354,52 @@ pub fn gen_error_message_md(root: &Path, codes: &[ErrorCodeSchema]) -> eyre::Res
         writeln!(&mut doc_file, "|{}|{}|{}|", item.code, item.name, item.description)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::definitions::{EndpointSchemaElement, RustGenConfig};
+    use endpoint_libs::model::Field;
+
+    #[test]
+    fn mcp_tools_json_is_written_per_service() {
+        let dir = std::env::temp_dir().join(format!("endpointgen-mcp-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let data = Data {
+            project_root: dir.clone(),
+            output_dir: dir.clone(),
+            services: vec![GenService::new(
+                "user".to_string(),
+                1,
+                vec![EndpointSchemaElement {
+                    frontend_facing: true,
+                    config: RustGenConfig::default(),
+                    schema: EndpointSchema::new(
+                        "UserGetProfile",
+                        10010,
+                        vec![Field::new("user_id", Type::Int64)],
+                        vec![Field::new("ok", Type::Boolean)],
+                    )
+                    .with_description("Fetches a user profile."),
+                }],
+            )],
+            enums: vec![],
+            structs: vec![],
+            error_codes: vec![],
+        };
+
+        gen_mcp_tools_json(&data).unwrap();
+
+        let out = std::fs::read_to_string(dir.join("docs").join("user_mcp_tools.json")).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let tool = &parsed["tools"][0];
+        assert_eq!(tool["name"], json!("user_get_profile"));
+        assert_eq!(tool["code"], json!(10010));
+        assert_eq!(tool["inputSchema"]["required"], json!(["userId"]));
+        assert_eq!(tool["outputSchema"]["properties"]["ok"]["type"], json!("boolean"));
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }
