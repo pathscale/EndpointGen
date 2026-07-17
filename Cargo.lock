@@ -874,6 +874,7 @@ dependencies = [
 [[package]]
 name = "endpoint-libs"
 version = "1.8.2"
+source = "git+https://github.com/pathscale/endpoint-libs?branch=main#960ec49a71b1745e5e9fad0d94df07b15ec33043"
 dependencies = [
  "alloy-primitives",
  "bytes",
