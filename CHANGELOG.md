@@ -1,6 +1,22 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [1.9.0] - 2026-07-17
+
+### Bug Fixes
+
+- Patch endpoint-libs via git branch so CI can resolve it
+- Point endpoint-libs patch at main (MCP PRs merged, branch deleted)
+- Resolve clippy lints failing CI (large_enum_variant, collapsible_if)
+
+### Features
+
+- Emit type_registry() and MCP tools docs for endpoint-libs MCP surface
+
+### Miscellaneous Tasks
+
+- Require endpoint-libs 1.9.0 from crates.io, drop temporary patch
+
 ## [1.5.1] - 2026-03-28
 
 ### Miscellaneous Tasks
