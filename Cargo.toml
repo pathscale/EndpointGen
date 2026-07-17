@@ -35,4 +35,4 @@ toml = "0.9"
 # Remove once endpoint-libs with the MCP surface is published and the
 # `endpoint-libs` version requirement above is bumped to match.
 [patch.crates-io]
-endpoint-libs = { git = "https://github.com/pathscale/endpoint-libs", branch = "mcp/pr3-wiring" }
+endpoint-libs = { git = "https://github.com/pathscale/endpoint-libs", branch = "main" }
