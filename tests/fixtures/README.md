@@ -30,9 +30,18 @@ The path scheme is structural, not cosmetic: the RON namespace is
 `(service_name, service_id)`, so a flat `/rpc/{Name}` scheme collides the moment two
 services reuse an endpoint name or documents get merged.
 
-**Tiebreak rule.** If any further divergence between plan and fixture turns up during
-implementation, the *fixture's* convention wins unless it is demonstrably wrong — it is
-the deployed artifact.
+**This file is not an oracle.** Nothing is deployed from it, and no test reads it yet —
+it sits here as a convention reference until Phase 2 exists. It never described a running
+surface either: the server speaks WebSocket, and these paths are synthetic.
+
+So where fixture and emitter disagree, **the RON decides** — that is the project's one
+source of truth. What the fixture earned is that its *conventions* were reviewed and
+adopted into `PLAN-2.1.md` §3.1/§3.2; those now live in the plan, and the plan is what an
+implementer follows. Its *contents* carry no authority: they were written by hand from an
+older RON state.
+
+Phase 2 should finish by regenerating this file from the emitter and adding a test that
+asserts the §3.1 conventions against it. Until then it is documentation, not a fixture.
 
 **How to use it.** This is a *reference for the shape*, not a byte-exact expectation. It
 was produced by hand from an older RON state, so it will not match emitter output

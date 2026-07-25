@@ -39,6 +39,19 @@ struct Cli {
     /// since they produce useless MCP tool metadata and docs.
     #[arg(long)]
     allow_empty_descriptions: bool,
+
+    /// Verify the committed artifacts match the RON instead of writing them.
+    ///
+    /// Regenerates everything into a temporary directory, diffs it against the
+    /// `docs/` tree, and exits non-zero if anything differs or is missing.
+    /// Nothing on disk is touched. Intended for CI: a committed artifact is
+    /// only trustworthy if something proves it still matches its source.
+    ///
+    /// Only `docs/` is compared. The `generated/` Rust output is gitignored in
+    /// every consumer repo, so it is not a committed artifact and cannot
+    /// meaningfully drift.
+    #[arg(long)]
+    check: bool,
 }
 
 fn main() -> Result<()> {
@@ -78,16 +91,87 @@ fn main() -> Result<()> {
         error_codes: input_objects.error_codes,
     };
 
-    let docs_data = format_for_docs(&data);
+    if args.check {
+        return run_check(&data);
+    }
+
+    run_generation(&data)
+}
+
+/// Writes every artifact rooted at `data.project_root` / `data.output_dir`.
+///
+/// Kept separate from `main` so `--check` can run the identical pipeline into a
+/// scratch directory. If these ever diverge, `--check` starts lying.
+fn run_generation(data: &Data) -> Result<()> {
+    let docs_data = format_for_docs(data);
 
     docs::gen_services_docs(&docs_data)?;
     docs::gen_md_docs(&docs_data)?;
     // Raw data (not docs_data): MCP schemas camelCase field names themselves,
     // matching the wire format regardless of the snake_case_fields config.
-    docs::gen_mcp_tools_json(&data)?;
-    rust::gen_model_rs(&data)?;
+    docs::gen_mcp_tools_json(data)?;
+    rust::gen_model_rs(data)?;
     docs::gen_error_message_md(&data.project_root, &data.error_codes)?;
     Ok(())
+}
+
+/// Regenerates into a temp directory and diffs `docs/` against the working tree.
+///
+/// Returns `Err` (non-zero exit) listing every drifted or missing file. Writes
+/// nothing to the project.
+fn run_check(data: &Data) -> Result<()> {
+    let scratch = tempfile::tempdir().wrap_err("failed to create scratch directory for --check")?;
+
+    let staged = Data {
+        project_root: scratch.path().to_path_buf(),
+        output_dir: scratch.path().join("generated"),
+        services: data.services.clone(),
+        enums: data.enums.clone(),
+        structs: data.structs.clone(),
+        error_codes: data.error_codes.clone(),
+    };
+    run_generation(&staged)?;
+
+    let staged_docs = scratch.path().join("docs");
+    let committed_docs = data.project_root.join("docs");
+
+    let mut drift: Vec<String> = vec![];
+    let mut compared = 0u32;
+
+    let mut staged_files: Vec<PathBuf> = WalkDir::new(&staged_docs)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .map(|e| e.into_path())
+        .collect();
+    staged_files.sort();
+
+    for staged_file in staged_files {
+        let rel = staged_file
+            .strip_prefix(&staged_docs)
+            .expect("walked path is always under staged_docs");
+        let expected = fs::read(&staged_file)?;
+
+        match fs::read(committed_docs.join(rel)) {
+            Ok(actual) if actual == expected => compared += 1,
+            Ok(_) => {
+                compared += 1;
+                drift.push(format!("  drifted:  docs/{}", rel.display()));
+            }
+            Err(_) => drift.push(format!("  missing:  docs/{}", rel.display())),
+        }
+    }
+
+    if drift.is_empty() {
+        println!("endpoint-gen --check: {compared} generated file(s) match the RON definitions.");
+        return Ok(());
+    }
+
+    bail!(
+        "Generated artifacts are out of date with the RON definitions:\n{}\n\n\
+         Regenerate with `endpoint-gen` (no --check) and commit the result.",
+        drift.join("\n")
+    );
 }
 
 /// Formats fields of endpoint input/return params and fields of structs from snake to camel case if enabled
@@ -375,8 +459,16 @@ fn build_object_lists(dir: PathBuf, allow_empty_descriptions: bool) -> eyre::Res
         }
     }
 
-    // Sort services by ID
-    services.sort_by_key(|a| a.id);
+    // Sort services by (id, name), not id alone.
+    //
+    // `service_schema_map` is a HashMap, so services come out in an order that
+    // is randomised per process. Sorting by `id` is stable but not a *total*
+    // order: service ids are not unique (pays.online-backend has seven services
+    // at id 1), so every run tied services in a different order and every
+    // regeneration produced a spurious diff in docs/services.json and
+    // docs/README.md. Adding `name` as a tiebreak makes output deterministic,
+    // which is what lets `--check` be trusted in CI.
+    services.sort_by(|a, b| a.id.cmp(&b.id).then_with(|| a.name.cmp(&b.name)));
 
     // Sort the endpoints of each service by their codes
     services
