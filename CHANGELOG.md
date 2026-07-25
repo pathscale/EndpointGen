@@ -1,6 +1,35 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [1.11.0] - 2026-07-25
+
+### Features
+
+- Add --check, and make generation deterministic
+
+### Styling
+
+- Fix rustfmt drift, and add the OpenAPI golden fixture
+
+## [1.10.1] - 2026-07-25
+
+### Documentation
+
+- Adopt the AGENTS.md agent standard + guardrails
+- Scope the force-push rule to the default branch
+
+## [1.10.0] - 2026-07-25
+
+### Features
+
+- Fail generation on empty endpoint and enum-variant descriptions
+- Extend empty-description validation to error codes
+
+### Miscellaneous Tasks
+
+- Move to endpoint-libs 2.0 (lockstep)
+- Depend on published endpoint-libs 2.0.0-alpha.1
+
 ## [1.9.0] - 2026-07-17
 
 ### Bug Fixes
