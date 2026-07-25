@@ -841,7 +841,7 @@ dependencies = [
 
 [[package]]
 name = "endpoint-gen"
-version = "1.11.0"
+version = "1.12.0"
 dependencies = [
  "clap",
  "convert_case 0.10.0",
@@ -875,6 +875,8 @@ dependencies = [
 [[package]]
 name = "endpoint-libs"
 version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1451a7185842a8f739fa679c11a86039f55997065bc6538c17570a57a044f3ff"
 dependencies = [
  "alloy-primitives",
  "bytes",

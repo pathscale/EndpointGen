@@ -1,6 +1,14 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [1.12.0] - 2026-07-25
+
+### Features
+
+- Add the OpenAPI 3.1 emitter
+- Add the AsyncAPI 3.0 emitter
+- Wire the emitters into the build and --check
+
 ## [1.11.0] - 2026-07-25
 
 ### Features
