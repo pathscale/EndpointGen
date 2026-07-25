@@ -21,8 +21,6 @@
 //!   tags:        [{serviceName}]
 //! ```
 
-use std::collections::BTreeMap;
-
 use convert_case::{Case, Casing};
 use endpoint_libs::model::{EndpointSchema, SchemaComponents, TypeRegistry, apply_meta};
 use eyre::{Context, Result};
@@ -30,6 +28,10 @@ use serde_json::{Value, json};
 
 use crate::definitions::{ErrorCodeSchema, GenService};
 use crate::docs::Data;
+use crate::spec_common::{
+    ERROR_ENVELOPE, build_registry, collect_components, document_schemas, document_title, error_code_list,
+    visible_services,
+};
 
 /// The security scheme name used for every operation.
 const SESSION_TOKEN_SCHEME: &str = "sessionToken";
@@ -40,13 +42,7 @@ pub fn build_openapi(data: &Data, public_only: bool) -> Result<Value> {
     let registry = build_registry(data);
     let services = visible_services(data, public_only);
 
-    let all_endpoints: Vec<EndpointSchema> = services
-        .iter()
-        .flat_map(|s| s.endpoints.iter().map(|e| e.schema.clone()))
-        .collect();
-
-    let components = SchemaComponents::collect(&all_endpoints, &registry)
-        .wrap_err("collecting shared schema components for the OpenAPI document")?;
+    let components = collect_components(&services, &registry)?;
 
     let mut paths = serde_json::Map::new();
     let mut tags = Vec::new();
@@ -74,9 +70,6 @@ pub fn build_openapi(data: &Data, public_only: bool) -> Result<Value> {
         }
     }
 
-    let mut schemas: BTreeMap<String, Value> = components.schemas.clone();
-    schemas.insert("ErrorEnvelope".into(), error_envelope_schema());
-
     Ok(json!({
         "openapi": "3.1.0",
         "info": {
@@ -87,7 +80,7 @@ pub fn build_openapi(data: &Data, public_only: bool) -> Result<Value> {
         "tags": tags,
         "paths": Value::Object(paths),
         "components": {
-            "schemas": schemas,
+            "schemas": document_schemas(&components),
             "securitySchemes": {
                 SESSION_TOKEN_SCHEME: {
                     "type": "apiKey",
@@ -143,49 +136,6 @@ fn operation_path(service_name: &str, endpoint_name: &str) -> String {
 
 fn operation_id(service_name: &str, endpoint_name: &str) -> String {
     format!("{}_{}", service_name, endpoint_name.to_case(Case::Snake))
-}
-
-fn document_title(data: &Data) -> String {
-    data.project_root
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| "API".into())
-}
-
-fn build_registry(data: &Data) -> TypeRegistry {
-    let mut registry = TypeRegistry::new();
-    registry.add_all(crate::rust::shared_type_definitions(data).iter());
-    for service in &data.services {
-        for endpoint in &service.endpoints {
-            registry.add_endpoint(&endpoint.schema);
-        }
-    }
-    registry
-}
-
-/// Services filtered by `--public-only`.
-///
-/// Filtering is per endpoint, not per service: a service with a mix keeps only
-/// its frontend-facing operations. A service left with nothing is dropped
-/// entirely so the document has no empty tags.
-fn visible_services(data: &Data, public_only: bool) -> Vec<GenService> {
-    data.services
-        .iter()
-        .filter_map(|service| {
-            let endpoints: Vec<_> = service
-                .endpoints
-                .iter()
-                .filter(|e| !public_only || e.frontend_facing)
-                .cloned()
-                .collect();
-            if endpoints.is_empty() {
-                return None;
-            }
-            let mut service = service.clone();
-            service.endpoints = endpoints;
-            Some(service)
-        })
-        .collect()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -274,36 +224,13 @@ fn build_responses(
                         failures arrive as this object.",
         "content": {
             "application/json": {
-                "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+                "schema": { "$ref": format!("#/components/schemas/{ERROR_ENVELOPE}") }
             }
         },
     });
 
-    if !schema.errors.is_empty() {
-        let catalog: BTreeMap<&str, &ErrorCodeSchema> = error_codes.iter().map(|c| (c.name.as_str(), c)).collect();
-
-        let listed: Vec<Value> = schema
-            .errors
-            .iter()
-            .map(|error| {
-                let variant = error.code.variant();
-                let mut entry = serde_json::Map::new();
-                entry.insert("name".into(), json!(error.name));
-                entry.insert("code".into(), json!(variant));
-                if let Some(known) = catalog.get(variant) {
-                    entry.insert("value".into(), json!(known.code));
-                    if !known.description.is_empty() {
-                        entry.insert("description".into(), json!(known.description));
-                    }
-                }
-                if !error.message.is_empty() {
-                    entry.insert("message".into(), json!(error.message));
-                }
-                Value::Object(entry)
-            })
-            .collect();
-
-        error_response["x-error-codes"] = Value::Array(listed);
+    if let Some(listed) = error_code_list(schema, error_codes) {
+        error_response["x-error-codes"] = listed;
     }
 
     Ok(json!({
@@ -313,21 +240,6 @@ fn build_responses(
         },
         "default": error_response,
     }))
-}
-
-/// The standard error envelope: code, message, params.
-fn error_envelope_schema() -> Value {
-    json!({
-        "type": "object",
-        "title": "ErrorEnvelope",
-        "description": "Standard error payload returned in place of a success response.",
-        "properties": {
-            "code": { "type": "integer", "description": "Error code from the global catalog." },
-            "message": { "type": "string" },
-            "params": { "type": "object", "description": "Error-specific fields, if any." },
-        },
-        "required": ["code", "message"],
-    })
 }
 
 #[cfg(test)]
