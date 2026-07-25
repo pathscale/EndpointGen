@@ -101,19 +101,29 @@ impl ToRust for Type {
                 let mut fields = fields
                     .iter()
                     .map(|x| {
-                        format!(
-                            r#"
+                        let variant_name = if x.name.chars().last().unwrap().is_lowercase() {
+                            x.name.to_case(Case::Pascal)
+                        } else {
+                            x.name.clone()
+                        };
+                        // A blank description must omit the `///` line entirely: an
+                        // empty doc comment trips clippy::empty_docs downstream.
+                        if x.description.trim().is_empty() {
+                            format!(
+                                r#"
+    {} = {}
+"#,
+                                variant_name, x.value
+                            )
+                        } else {
+                            format!(
+                                r#"
     /// {}
     {} = {}
 "#,
-                            x.description,
-                            if x.name.chars().last().unwrap().is_lowercase() {
-                                x.name.to_case(Case::Pascal)
-                            } else {
-                                x.name.clone()
-                            },
-                            x.value
-                        )
+                                x.description, variant_name, x.value
+                            )
+                        }
                     })
                     .sorted_by(|a, b| {
                         // Sort by the endpoint code
@@ -563,6 +573,26 @@ mod tests {
     use super::*;
     use crate::definitions::{EndpointSchemaElement, RustGenConfig};
     use endpoint_libs::model::{EndpointSchema, Field};
+
+    #[test]
+    fn enum_decl_omits_doc_comment_for_blank_descriptions() {
+        let e = Type::enum_(
+            "sample",
+            vec![
+                EnumVariant::new_with_description("Documented", "Has docs.", 0),
+                EnumVariant::new("Bare", 1),
+                EnumVariant::new_with_description("Blank", "   ", 2),
+            ],
+        );
+        let decl = e.to_rust_decl(false, false);
+        assert!(decl.contains("/// Has docs."));
+        assert!(
+            !decl.lines().any(|l| l.trim() == "///"),
+            "empty doc comment emitted (clippy::empty_docs):\n{decl}"
+        );
+        assert!(decl.contains("Bare = 1"));
+        assert!(decl.contains("Blank = 2"));
+    }
 
     fn test_data() -> Data {
         let user_info = Type::struct_(

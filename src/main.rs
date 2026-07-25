@@ -33,6 +33,12 @@ struct Cli {
     /// Output directory for the generated files
     #[arg(short, long)]
     output_dir: Option<String>,
+
+    /// Allow endpoint and enum-variant descriptions to be missing or blank
+    /// (legacy behavior). By default, generation fails on empty descriptions
+    /// since they produce useless MCP tool metadata and docs.
+    #[arg(long)]
+    allow_empty_descriptions: bool,
 }
 
 fn main() -> Result<()> {
@@ -61,7 +67,7 @@ fn main() -> Result<()> {
 
     let output_dir = generation_root.join("generated");
 
-    let input_objects = build_object_lists(config_dir)?;
+    let input_objects = build_object_lists(config_dir, args.allow_empty_descriptions)?;
 
     let data = Data {
         project_root: generation_root,
@@ -169,7 +175,66 @@ fn process_file(file_path: &Path) -> eyre::Result<Option<Definition>> {
     }
 }
 
-fn process_input_files(dir: PathBuf) -> eyre::Result<Vec<Definition>> {
+/// Returns one violation string per missing/blank description in the
+/// definition. Endpoint descriptions become MCP tool descriptions and doc
+/// text; enum variant descriptions are emitted into the generated JSON
+/// schemas — both are validated.
+fn description_violations(definition: &Definition, path: &Path) -> Vec<String> {
+    fn blank(s: &str) -> bool {
+        s.trim().is_empty()
+    }
+
+    fn check_enum(inner: &Type, path: &Path, violations: &mut Vec<String>) {
+        if let Type::Enum { name, variants } = inner {
+            for variant in variants {
+                if blank(&variant.description) {
+                    violations.push(format!(
+                        "{}: enum '{}' variant '{}': missing or empty description",
+                        path.display(),
+                        name,
+                        variant.name
+                    ));
+                }
+            }
+        }
+    }
+
+    let mut violations = vec![];
+    match definition {
+        Definition::EndpointSchema(def) => {
+            if blank(&def.schema.schema.description) {
+                violations.push(format!(
+                    "{}: service '{}' endpoint '{}': missing or empty description",
+                    path.display(),
+                    def.service_name,
+                    def.schema.schema.name
+                ));
+            }
+        }
+        Definition::EndpointSchemaList(def) => {
+            for endpoint in &def.endpoints {
+                if blank(&endpoint.schema.description) {
+                    violations.push(format!(
+                        "{}: service '{}' endpoint '{}': missing or empty description",
+                        path.display(),
+                        def.service_name,
+                        endpoint.schema.name
+                    ));
+                }
+            }
+        }
+        Definition::Enum(element) => check_enum(&element.inner, path, &mut violations),
+        Definition::EnumList(list) => {
+            for element in &list.enum_elements {
+                check_enum(&element.inner, path, &mut violations);
+            }
+        }
+        _ => {}
+    }
+    violations
+}
+
+fn process_input_files(dir: PathBuf, allow_empty_descriptions: bool) -> eyre::Result<Vec<Definition>> {
     let root = dir.as_path();
 
     // Walk through the directory and all subdirectories
@@ -185,10 +250,14 @@ fn process_input_files(dir: PathBuf) -> eyre::Result<Vec<Definition>> {
     let mut rust_configs: Vec<Definition> = vec![];
     let mut valid_config_files_counter = 0u32;
     let mut config_errors = vec![];
+    let mut description_errors = vec![];
     for path in paths {
         match process_file(path.as_path()) {
             Ok(rust_config) => {
                 if let Some(config) = rust_config {
+                    if !allow_empty_descriptions {
+                        description_errors.extend(description_violations(&config, path.as_path()));
+                    }
                     rust_configs.push(config);
                     valid_config_files_counter += 1;
                 }
@@ -203,6 +272,16 @@ fn process_input_files(dir: PathBuf) -> eyre::Result<Vec<Definition>> {
 
     if !config_errors.is_empty() {
         bail!("Error processing RON config files:\n{}", config_errors.join("\n"));
+    }
+
+    if !description_errors.is_empty() {
+        bail!(
+            "Empty-description validation failed for {} item(s). Every endpoint and enum variant \
+             needs a description (it becomes MCP tool metadata and generated docs). \
+             Pass --allow-empty-descriptions to bypass:\n{}",
+            description_errors.len(),
+            description_errors.join("\n")
+        );
     }
 
     // If we haven't found any files, it's better to just return here immediately
@@ -220,8 +299,8 @@ struct InputObjects {
     error_codes: Vec<ErrorCodeSchema>,
 }
 
-fn build_object_lists(dir: PathBuf) -> eyre::Result<InputObjects> {
-    let rust_configs = process_input_files(dir)?;
+fn build_object_lists(dir: PathBuf, allow_empty_descriptions: bool) -> eyre::Result<InputObjects> {
+    let rust_configs = process_input_files(dir, allow_empty_descriptions)?;
 
     let mut service_schema_map: HashMap<(String, u16), Vec<EndpointSchemaElement>> = HashMap::new();
 
@@ -413,5 +492,80 @@ mod tests {
         assert_eq!(endpoint.returns[0].name, "accessToken");
         assert_eq!(endpoint.errors[0].fields[0].name, "minLength");
         assert_eq!(endpoint.errors[0].fields[1].name, "actualLength");
+    }
+
+    use endpoint_gen::definitions::EndpointSchemaListDefinition;
+    use endpoint_libs::model::EnumVariant;
+
+    fn endpoint_list(descriptions: &[&str]) -> Definition {
+        Definition::EndpointSchemaList(EndpointSchemaListDefinition {
+            service_name: "userApi".to_string(),
+            service_id: 6,
+            config: RustGenConfig::default(),
+            endpoints: descriptions
+                .iter()
+                .enumerate()
+                .map(|(i, desc)| EndpointSchemaElement {
+                    frontend_facing: true,
+                    config: RustGenConfig::default(),
+                    schema: EndpointSchema::new(format!("Endpoint{i}"), 60000 + i as u32, vec![], vec![])
+                        .with_description(*desc),
+                })
+                .collect(),
+        })
+    }
+
+    fn enum_definition(variant_descriptions: &[&str]) -> Definition {
+        Definition::Enum(EnumElement {
+            config: RustGenConfig::default(),
+            inner: Type::Enum {
+                name: "UserRole".to_string(),
+                variants: variant_descriptions
+                    .iter()
+                    .enumerate()
+                    .map(|(i, desc)| EnumVariant::new_with_description(format!("Variant{i}"), desc.to_string(), i as i64))
+                    .collect(),
+            },
+        })
+    }
+
+    #[test]
+    fn description_violations_flags_empty_and_whitespace_endpoints() {
+        let path = Path::new("config/schema_lists/060_user/061_user_api.ron");
+        let violations = description_violations(&endpoint_list(&["Fetches a profile.", "", "   \t"]), path);
+        assert_eq!(violations.len(), 2);
+        assert!(violations[0].contains("service 'userApi'"));
+        assert!(violations[0].contains("endpoint 'Endpoint1'"));
+        assert!(violations[0].contains("061_user_api.ron"));
+        assert!(violations[1].contains("endpoint 'Endpoint2'"));
+    }
+
+    #[test]
+    fn description_violations_passes_documented_endpoints() {
+        let path = Path::new("config/a.ron");
+        let violations = description_violations(&endpoint_list(&["Documented.", "Also documented."]), path);
+        assert!(violations.is_empty());
+    }
+
+    #[test]
+    fn description_violations_flags_blank_enum_variants() {
+        let path = Path::new("config/enums.ron");
+        let violations = description_violations(&enum_definition(&["Platform admin", "", " "]), path);
+        assert_eq!(violations.len(), 2);
+        assert!(violations[0].contains("enum 'UserRole'"));
+        assert!(violations[0].contains("variant 'Variant1'"));
+        assert!(violations[1].contains("variant 'Variant2'"));
+    }
+
+    #[test]
+    fn description_violations_ignores_structs_and_error_codes() {
+        // Struct fields cannot carry RON descriptions (Field.description is
+        // serde-skipped upstream), so StructList definitions never violate.
+        let path = Path::new("config/structs.ron");
+        let def = Definition::StructList(endpoint_gen::definitions::StructListDefinition {
+            config: RustGenConfig::default(),
+            struct_elements: vec![],
+        });
+        assert!(description_violations(&def, path).is_empty());
     }
 }
