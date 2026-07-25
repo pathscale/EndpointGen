@@ -874,6 +874,8 @@ dependencies = [
 [[package]]
 name = "endpoint-libs"
 version = "2.0.0-alpha.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c01f4bd8850b41dd1cb2df5a5a32f5bc85c295903b55d62941424e0009d2e7c0"
 dependencies = [
  "alloy-primitives",
  "bytes",
