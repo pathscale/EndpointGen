@@ -131,10 +131,8 @@ pub fn error_code_list(schema: &EndpointSchema, error_codes: &[crate::definition
     Some(Value::Array(listed))
 }
 
-/// Document title, derived from the project directory name.
+/// Document title. See [`Data::project_name`] for why this is not derived from
+/// the output path.
 pub fn document_title(data: &Data) -> String {
-    data.project_root
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| "API".into())
+    data.project_name.clone()
 }

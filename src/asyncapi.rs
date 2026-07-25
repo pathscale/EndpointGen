@@ -377,6 +377,7 @@ mod tests {
         .with_description("Logs a user in.");
 
         Data {
+            project_name: "api.example.com".into(),
             project_root: PathBuf::from("/tmp/api.example.com"),
             output_dir: PathBuf::from("/tmp/api.example.com/generated"),
             services: vec![GenService::new("userApi".into(), 1, vec![element(login, true)])],

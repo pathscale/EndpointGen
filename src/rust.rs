@@ -612,6 +612,7 @@ mod tests {
         );
         let role = Type::enum_("role", vec![EnumVariant::new("Admin", 1)]);
         Data {
+            project_name: "api.example.com".into(),
             project_root: std::path::PathBuf::new(),
             output_dir: std::path::PathBuf::new(),
             services: vec![crate::definitions::GenService::new(

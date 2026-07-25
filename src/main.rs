@@ -8,10 +8,11 @@ use std::{
 use clap::Parser;
 use convert_case::{Case, Casing};
 use endpoint_gen::{
+    asyncapi,
     definitions::{Definition, EndpointSchemaElement, EnumElement, ErrorCodeSchema, GenService, StructElement},
     docs::{self, Data},
     error_codes::{build_error_code_catalog, validate_endpoint_error_codes, validate_reserved_enum_names},
-    rust,
+    openapi, rust,
 };
 use endpoint_libs::model::Type;
 use eyre::*;
@@ -39,6 +40,14 @@ struct Cli {
     /// since they produce useless MCP tool metadata and docs.
     #[arg(long)]
     allow_empty_descriptions: bool,
+
+    /// Emit only `frontend_facing` endpoints into the OpenAPI/AsyncAPI
+    /// documents — the version you would hand to a third party.
+    ///
+    /// Filtering is per endpoint, not per service. Does not affect the Rust
+    /// output or the MCP tool lists.
+    #[arg(long)]
+    public_only: bool,
 
     /// Verify the committed artifacts match the RON instead of writing them.
     ///
@@ -83,6 +92,10 @@ fn main() -> Result<()> {
     let input_objects = build_object_lists(config_dir, args.allow_empty_descriptions)?;
 
     let data = Data {
+        project_name: generation_root
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "API".into()),
         project_root: generation_root,
         output_dir,
         services: input_objects.services,
@@ -92,24 +105,28 @@ fn main() -> Result<()> {
     };
 
     if args.check {
-        return run_check(&data);
+        return run_check(&data, args.public_only);
     }
 
-    run_generation(&data)
+    run_generation(&data, args.public_only)
 }
 
 /// Writes every artifact rooted at `data.project_root` / `data.output_dir`.
 ///
 /// Kept separate from `main` so `--check` can run the identical pipeline into a
 /// scratch directory. If these ever diverge, `--check` starts lying.
-fn run_generation(data: &Data) -> Result<()> {
+fn run_generation(data: &Data, public_only: bool) -> Result<()> {
     let docs_data = format_for_docs(data);
 
     docs::gen_services_docs(&docs_data)?;
     docs::gen_md_docs(&docs_data)?;
-    // Raw data (not docs_data): MCP schemas camelCase field names themselves,
-    // matching the wire format regardless of the snake_case_fields config.
+    // Raw data (not docs_data): MCP schemas, the OpenAPI document and the
+    // AsyncAPI document all camelCase field names themselves, matching the wire
+    // format regardless of the snake_case_fields config.
     docs::gen_mcp_tools_json(data)?;
+    openapi::gen_openapi(data, public_only)?;
+    asyncapi::gen_asyncapi(data, public_only)?;
+    docs::gen_spec_readme(&data.project_root)?;
     rust::gen_model_rs(data)?;
     docs::gen_error_message_md(&data.project_root, &data.error_codes)?;
     Ok(())
@@ -119,10 +136,13 @@ fn run_generation(data: &Data) -> Result<()> {
 ///
 /// Returns `Err` (non-zero exit) listing every drifted or missing file. Writes
 /// nothing to the project.
-fn run_check(data: &Data) -> Result<()> {
+fn run_check(data: &Data, public_only: bool) -> Result<()> {
     let scratch = tempfile::tempdir().wrap_err("failed to create scratch directory for --check")?;
 
     let staged = Data {
+        // Same name, different location: the point of --check is to compare
+        // content, so nothing but the output path may differ.
+        project_name: data.project_name.clone(),
         project_root: scratch.path().to_path_buf(),
         output_dir: scratch.path().join("generated"),
         services: data.services.clone(),
@@ -130,7 +150,7 @@ fn run_check(data: &Data) -> Result<()> {
         structs: data.structs.clone(),
         error_codes: data.error_codes.clone(),
     };
-    run_generation(&staged)?;
+    run_generation(&staged, public_only)?;
 
     let staged_docs = scratch.path().join("docs");
     let committed_docs = data.project_root.join("docs");
@@ -238,6 +258,7 @@ fn format_for_docs(data: &Data) -> Data {
         .collect();
 
     Data {
+        project_name: data.project_name.clone(),
         project_root: data.project_root.clone(),
         output_dir: data.output_dir.clone(),
         services: formatted_services,
@@ -563,6 +584,7 @@ mod tests {
     #[test]
     fn format_for_docs_camel_cases_endpoint_error_fields() {
         let data = Data {
+            project_name: "test".into(),
             project_root: PathBuf::new(),
             output_dir: PathBuf::new(),
             services: vec![GenService::new(
