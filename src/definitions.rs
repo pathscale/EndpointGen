@@ -427,17 +427,11 @@ pub struct EndpointSchemaElement {
 
 impl From<EndpointSchemaElement> for EndpointSchema {
     fn from(val: EndpointSchemaElement) -> Self {
-        EndpointSchema {
-            name: val.schema.name,
-            code: val.schema.code,
-            parameters: val.schema.parameters,
-            returns: val.schema.returns,
-            stream_response: val.schema.stream_response,
-            description: val.schema.description,
-            json_schema: val.schema.json_schema,
-            roles: val.schema.roles,
-            errors: val.schema.errors,
-        }
+        // Was a field-by-field copy, which `#[non_exhaustive]` (endpoint-libs 2.0)
+        // now forbids from outside that crate — and which was always a no-op, since
+        // the source field *is* an EndpointSchema. Moving it also means new fields
+        // (e.g. `meta`) are carried through automatically instead of being dropped.
+        val.schema
     }
 }
 
