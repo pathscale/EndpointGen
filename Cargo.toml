@@ -30,7 +30,3 @@ smart-serde-default = "0.1"
 
 [build-dependencies]
 toml = "0.9"
-
-# TEMPORARY (2.0 lockstep verification) — remove before release.
-[patch.crates-io]
-endpoint-libs = { path = "../endpoint-libs" }
