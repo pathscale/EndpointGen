@@ -229,7 +229,25 @@ fn description_violations(definition: &Definition, path: &Path) -> Vec<String> {
                 check_enum(&element.inner, path, &mut violations);
             }
         }
-        _ => {}
+        Definition::ErrorCodeList(list) => {
+            // Error-code descriptions are not cosmetic either: they become the doc
+            // comments on the generated `EnumErrorCode` variants and the third
+            // column of docs/error_codes/error_codes.md. A blank one produces an
+            // error a caller cannot interpret.
+            for code in &list.codes {
+                if blank(&code.description) {
+                    violations.push(format!(
+                        "{}: error code '{}' ({}): missing or empty description",
+                        path.display(),
+                        code.name,
+                        code.code
+                    ));
+                }
+            }
+        }
+        // Struct fields cannot carry RON descriptions — Field.description is
+        // #[serde(skip)] upstream — so struct definitions can never violate.
+        Definition::Struct(_) | Definition::StructList(_) => {}
     }
     violations
 }
@@ -276,9 +294,10 @@ fn process_input_files(dir: PathBuf, allow_empty_descriptions: bool) -> eyre::Re
 
     if !description_errors.is_empty() {
         bail!(
-            "Empty-description validation failed for {} item(s). Every endpoint and enum variant \
-             needs a description (it becomes MCP tool metadata and generated docs). \
-             Pass --allow-empty-descriptions to bypass:\n{}",
+            "Empty-description validation failed for {} item(s). Every endpoint, enum variant \
+             and error code needs a description (these become MCP tool metadata, generated doc \
+             comments and the error-code reference). Pass --allow-empty-descriptions to \
+             bypass:\n{}",
             description_errors.len(),
             description_errors.join("\n")
         );
@@ -560,7 +579,7 @@ mod tests {
     }
 
     #[test]
-    fn description_violations_ignores_structs_and_error_codes() {
+    fn description_violations_ignores_structs() {
         // Struct fields cannot carry RON descriptions (Field.description is
         // serde-skipped upstream), so StructList definitions never violate.
         let path = Path::new("config/structs.ron");
@@ -569,5 +588,23 @@ mod tests {
             struct_elements: vec![],
         });
         assert!(description_violations(&def, path).is_empty());
+    }
+
+    #[test]
+    fn description_violations_flags_blank_error_codes() {
+        use endpoint_gen::definitions::{ErrorCodeListDefinition, ErrorCodeSchema};
+        let path = Path::new("config/error_codes.ron");
+        let def = Definition::ErrorCodeList(ErrorCodeListDefinition {
+            codes: vec![
+                ErrorCodeSchema::new("BadRequest", 400, "The request was malformed."),
+                ErrorCodeSchema::new("Teapot", 418, ""),
+                ErrorCodeSchema::new("Blank", 419, "  \t "),
+            ],
+        });
+        let violations = description_violations(&def, path);
+        assert_eq!(violations.len(), 2, "{violations:?}");
+        assert!(violations[0].contains("error code 'Teapot' (418)"), "{violations:?}");
+        assert!(violations[1].contains("error code 'Blank' (419)"), "{violations:?}");
+        assert!(violations[0].contains("error_codes.ron"));
     }
 }
