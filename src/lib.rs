@@ -1,6 +1,7 @@
 pub mod definitions;
 pub mod docs;
 pub mod error_codes;
+pub mod openapi;
 pub mod rust;
 pub mod service;
 
