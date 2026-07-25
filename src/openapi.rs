@@ -77,6 +77,15 @@ pub fn build_openapi(data: &Data, public_only: bool) -> Result<Value> {
             "version": "1.0.0",
             "description": INFO_DESCRIPTION,
         },
+        // A relative "/" rather than a plausible https:// URL. OpenAPI defaults
+        // to this when `servers` is omitted, but linters flag an absent
+        // `servers` as an error, and a real-looking host would invite exactly
+        // the mistake info.description warns about.
+        "servers": [{
+            "url": "/",
+            "description": "Not a real server. This document is a projection for tooling; \
+                            the transport is a WebSocket. See info.description.",
+        }],
         "tags": tags,
         "paths": Value::Object(paths),
         "components": {
@@ -259,6 +268,7 @@ mod tests {
 
     fn data_with(services: Vec<GenService>) -> Data {
         Data {
+            project_name: "api.example.com".into(),
             project_root: PathBuf::from("/tmp/api.example.com"),
             output_dir: PathBuf::from("/tmp/api.example.com/generated"),
             services,
@@ -397,6 +407,20 @@ mod tests {
 
         let serialised = serde_json::to_string(&doc).unwrap();
         assert!(!serialised.contains("$defs"), "no $defs may survive into the document");
+    }
+
+    #[test]
+    fn servers_is_present_but_not_a_real_host() {
+        // Linters error on absent `servers`; a plausible https:// URL would
+        // invite the mistake info.description exists to prevent.
+        let doc = build_openapi(&sample_data(), false).unwrap();
+        assert_eq!(doc["servers"][0]["url"], "/");
+        assert!(
+            doc["servers"][0]["description"]
+                .as_str()
+                .unwrap()
+                .contains("Not a real server")
+        );
     }
 
     #[test]
