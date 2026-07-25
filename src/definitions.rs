@@ -137,19 +137,29 @@ impl ToRust for EnumElement {
                 let mut fields = fields
                     .iter()
                     .map(|x| {
-                        format!(
-                            r#"
+                        let variant_name = if x.name.chars().last().unwrap().is_lowercase() {
+                            x.name.to_case(Case::Pascal)
+                        } else {
+                            x.name.clone()
+                        };
+                        // A blank description must omit the `///` line entirely: an
+                        // empty doc comment trips clippy::empty_docs downstream.
+                        if x.description.trim().is_empty() {
+                            format!(
+                                r#"
+    {} = {}
+"#,
+                                variant_name, x.value
+                            )
+                        } else {
+                            format!(
+                                r#"
     /// {}
     {} = {}
 "#,
-                            x.description,
-                            if x.name.chars().last().unwrap().is_lowercase() {
-                                x.name.to_case(Case::Pascal)
-                            } else {
-                                x.name.clone()
-                            },
-                            x.value
-                        )
+                                x.description, variant_name, x.value
+                            )
+                        }
                     })
                     .sorted_by(|a, b| {
                         // Sort by the endpoint code
@@ -455,5 +465,34 @@ pub struct EndpointSchemaListDefinition {
 impl GenElement<EndpointSchemaListDefinition> for EndpointSchemaListDefinition {
     fn validate_element(&self) -> eyre::Result<()> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use endpoint_libs::model::EnumVariant;
+
+    #[test]
+    fn enum_element_decl_omits_doc_comment_for_blank_descriptions() {
+        let element = EnumElement {
+            config: RustGenConfig::default(),
+            inner: Type::enum_(
+                "sample",
+                vec![
+                    EnumVariant::new_with_description("Documented", "Has docs.", 0),
+                    EnumVariant::new("Bare", 1),
+                    EnumVariant::new_with_description("Blank", "   ", 2),
+                ],
+            ),
+        };
+        let decl = element.to_rust_decl(false, false);
+        assert!(decl.contains("/// Has docs."));
+        assert!(
+            !decl.lines().any(|l| l.trim() == "///"),
+            "empty doc comment emitted (clippy::empty_docs):\n{decl}"
+        );
+        assert!(decl.contains("Bare = 1"));
+        assert!(decl.contains("Blank = 2"));
     }
 }
