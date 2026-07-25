@@ -55,6 +55,14 @@ impl ToRust for Type {
             Type::BlockchainTransactionHash if serde_with => "H256".to_owned(),
             Type::BlockchainAddress => "BlockchainAddress".to_owned(),
             Type::BlockchainTransactionHash => "BlockchainTransactionHash".to_owned(),
+            // `Type` is #[non_exhaustive] as of endpoint-libs 2.0, so a newer libs
+            // release can add variants without breaking this build. Panicking is the
+            // right behaviour: emitting Rust for a type we do not understand would
+            // produce silently wrong generated code.
+            other => panic!(
+                "endpoint-gen does not know how to emit Rust for {other:?}; \
+                 upgrade endpoint-gen to match your endpoint-libs version"
+            ),
         }
     }
 

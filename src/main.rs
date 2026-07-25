@@ -469,15 +469,17 @@ mod tests {
                         vec![Field::new("user_name", Type::String)],
                         vec![Field::new("access_token", Type::String)],
                     )
-                    .with_errors(vec![EndpointErrorSchema {
-                        name: "PasswordTooShort".to_string(),
-                        code: EndpointErrorCodeRef::new("BadRequest"),
-                        message: "Password too short".to_string(),
-                        fields: vec![
+                    .with_errors(vec![
+                        EndpointErrorSchema::new(
+                            "PasswordTooShort",
+                            EndpointErrorCodeRef::new("BadRequest"),
+                        )
+                        .with_message("Password too short")
+                        .with_fields(vec![
                             Field::new("min_length", Type::Int32),
                             Field::new("actual_length", Type::Int32),
-                        ],
-                    }]),
+                        ]),
+                    ]),
                 }],
             )],
             enums: vec![],
