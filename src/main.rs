@@ -489,15 +489,12 @@ mod tests {
                         vec![Field::new("access_token", Type::String)],
                     )
                     .with_errors(vec![
-                        EndpointErrorSchema::new(
-                            "PasswordTooShort",
-                            EndpointErrorCodeRef::new("BadRequest"),
-                        )
-                        .with_message("Password too short")
-                        .with_fields(vec![
-                            Field::new("min_length", Type::Int32),
-                            Field::new("actual_length", Type::Int32),
-                        ]),
+                        EndpointErrorSchema::new("PasswordTooShort", EndpointErrorCodeRef::new("BadRequest"))
+                            .with_message("Password too short")
+                            .with_fields(vec![
+                                Field::new("min_length", Type::Int32),
+                                Field::new("actual_length", Type::Int32),
+                            ]),
                     ]),
                 }],
             )],
@@ -544,7 +541,9 @@ mod tests {
                 variants: variant_descriptions
                     .iter()
                     .enumerate()
-                    .map(|(i, desc)| EnumVariant::new_with_description(format!("Variant{i}"), desc.to_string(), i as i64))
+                    .map(|(i, desc)| {
+                        EnumVariant::new_with_description(format!("Variant{i}"), desc.to_string(), i as i64)
+                    })
                     .collect(),
             },
         })

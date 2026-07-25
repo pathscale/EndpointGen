@@ -1,0 +1,1335 @@
+openapi: 3.1.0
+info:
+  title: api.support.cafe
+  version: 1.0.0
+  description: REST projection of the api.support.cafe endpoint surface. Generated from the declarative
+    RON endpoint definitions (endpoint-libs / endpoint-gen); the production transport is WebSocket (legacy
+    framing and MCP JSON-RPC 2.0). Vendor extensions x-endpoint-code and x-roles preserve opcode and RBAC
+    metadata.
+  contact:
+    name: PathScale
+    url: https://github.com/pathscale/api.support.cafe
+servers:
+- url: https://api.support.cafe
+paths:
+  /adminApi/delete_app:
+    post:
+      operationId: adminApi_delete_app
+      summary: delete app
+      description: Delete an app, its memberships, and stop its Telegram bot. Only the app Owner may call
+        this. Existing sessions and messages are not cascaded.
+      tags:
+      - adminApi
+      x-endpoint-code: 40000
+      x-frontend-facing: true
+      x-roles:
+      - Admin
+      - AppAdmin
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                appPublicId:
+                  maxLength: 16
+                  minLength: 16
+                  pattern: ^[0-9A-Za-z]+$
+                  type: string
+              required:
+              - appPublicId
+              type: object
+      security:
+      - honeyIdAuth: []
+  /adminApi/set_log_level:
+    post:
+      operationId: adminApi_set_log_level
+      summary: set log level
+      description: Change the server's log level at runtime (platform admin only).
+      tags:
+      - adminApi
+      x-endpoint-code: 40001
+      x-frontend-facing: true
+      x-roles:
+      - Admin
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                level:
+                  $ref: '#/components/schemas/LogLevel'
+              required:
+              - level
+              type: object
+      security:
+      - honeyIdAuth: []
+  /adminApi/get_users:
+    post:
+      operationId: adminApi_get_users
+      summary: get users
+      description: List all registered users with their platform roles (platform admin only).
+      tags:
+      - adminApi
+      x-endpoint-code: 40002
+      x-frontend-facing: true
+      x-roles:
+      - Admin
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  data:
+                    items:
+                      $ref: '#/components/schemas/UserInfo'
+                    type: array
+                required:
+                - data
+                type: object
+        '400':
+          $ref: '#/components/responses/Error'
+      security:
+      - honeyIdAuth: []
+  /adminApi/set_role:
+    post:
+      operationId: adminApi_set_role
+      summary: set role
+      description: Override a user's platform role (platform admin only).
+      tags:
+      - adminApi
+      x-endpoint-code: 40003
+      x-frontend-facing: true
+      x-roles:
+      - Admin
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                role:
+                  $ref: '#/components/schemas/UserRole'
+                userPubId:
+                  maxLength: 16
+                  minLength: 16
+                  pattern: ^[0-9A-Za-z]+$
+                  type: string
+              required:
+              - userPubId
+              - role
+              type: object
+      security:
+      - honeyIdAuth: []
+  /adminApi/get_all_apps:
+    post:
+      operationId: adminApi_get_all_apps
+      summary: get all apps
+      description: List all apps on the platform (platform admin only).
+      tags:
+      - adminApi
+      x-endpoint-code: 40004
+      x-frontend-facing: true
+      x-roles:
+      - Admin
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  data:
+                    items:
+                      $ref: '#/components/schemas/AppInfo'
+                    type: array
+                required:
+                - data
+                type: object
+        '400':
+          $ref: '#/components/responses/Error'
+      security:
+      - honeyIdAuth: []
+  /appAdminApi/create_app:
+    post:
+      operationId: appAdminApi_create_app
+      summary: create app
+      description: Register a new tenant app with its Telegram bot token. The caller becomes the app Owner
+        and the bot is registered and started.
+      tags:
+      - appAdminApi
+      x-endpoint-code: 30000
+      x-frontend-facing: true
+      x-roles:
+      - Admin
+      - AppAdmin
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  appPublicId:
+                    maxLength: 16
+                    minLength: 16
+                    pattern: ^[0-9A-Za-z]+$
+                    type: string
+                  createdAt:
+                    description: Unix timestamp in milliseconds
+                    type: integer
+                required:
+                - appPublicId
+                - createdAt
+                type: object
+        '400':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                appName:
+                  type: string
+                messagePersistenceEnabled:
+                  type: boolean
+                tgBotToken:
+                  type: string
+              required:
+              - tgBotToken
+              type: object
+      security:
+      - honeyIdAuth: []
+  /appAdminApi/edit_app:
+    post:
+      operationId: appAdminApi_edit_app
+      summary: edit app
+      description: Update an app's name, Telegram bot token, active flag, or message persistence. Changing
+        the token or active flag restarts or stops the app's bot.
+      tags:
+      - appAdminApi
+      x-endpoint-code: 30001
+      x-frontend-facing: true
+      x-roles:
+      - Admin
+      - AppAdmin
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                active:
+                  type: boolean
+                appName:
+                  type: string
+                appPublicId:
+                  maxLength: 16
+                  minLength: 16
+                  pattern: ^[0-9A-Za-z]+$
+                  type: string
+                messagePersistenceEnabled:
+                  type: boolean
+                tgBotToken:
+                  type: string
+              required:
+              - appPublicId
+              type: object
+      security:
+      - honeyIdAuth: []
+  /appAdminApi/list_apps:
+    post:
+      operationId: appAdminApi_list_apps
+      summary: list apps
+      description: List apps the caller is a member of. The response includes each app's Telegram bot
+        token — treat it as a secret.
+      tags:
+      - appAdminApi
+      x-endpoint-code: 30002
+      x-frontend-facing: true
+      x-roles:
+      - Admin
+      - AppAdmin
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  data:
+                    items:
+                      $ref: '#/components/schemas/AppConfig'
+                    type: array
+                required:
+                - data
+                type: object
+        '400':
+          $ref: '#/components/responses/Error'
+      security:
+      - honeyIdAuth: []
+  /appAdminApi/enable_support_user:
+    post:
+      operationId: appAdminApi_enable_support_user
+      summary: enable support user
+      description: Enable an app member to receive support messages in Telegram.
+      tags:
+      - appAdminApi
+      x-endpoint-code: 30003
+      x-frontend-facing: true
+      x-roles:
+      - Admin
+      - AppAdmin
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                appPublicId:
+                  maxLength: 16
+                  minLength: 16
+                  pattern: ^[0-9A-Za-z]+$
+                  type: string
+                userPubId:
+                  maxLength: 16
+                  minLength: 16
+                  pattern: ^[0-9A-Za-z]+$
+                  type: string
+              required:
+              - appPublicId
+              - userPubId
+              type: object
+      security:
+      - honeyIdAuth: []
+  /appAdminApi/disable_support_user:
+    post:
+      operationId: appAdminApi_disable_support_user
+      summary: disable support user
+      description: Stop an app member from receiving support messages in Telegram.
+      tags:
+      - appAdminApi
+      x-endpoint-code: 30005
+      x-frontend-facing: true
+      x-roles:
+      - Admin
+      - AppAdmin
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                appPublicId:
+                  maxLength: 16
+                  minLength: 16
+                  pattern: ^[0-9A-Za-z]+$
+                  type: string
+                userPubId:
+                  maxLength: 16
+                  minLength: 16
+                  pattern: ^[0-9A-Za-z]+$
+                  type: string
+              required:
+              - appPublicId
+              - userPubId
+              type: object
+      security:
+      - honeyIdAuth: []
+  /appAdminApi/add_app_member:
+    post:
+      operationId: appAdminApi_add_app_member
+      summary: add app member
+      description: Add a user to an app as a Support member. Use SetAppMemberRole to change their role
+        afterwards.
+      tags:
+      - appAdminApi
+      x-endpoint-code: 30006
+      x-frontend-facing: true
+      x-roles:
+      - Admin
+      - AppAdmin
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                appPublicId:
+                  maxLength: 16
+                  minLength: 16
+                  pattern: ^[0-9A-Za-z]+$
+                  type: string
+                userPubId:
+                  maxLength: 16
+                  minLength: 16
+                  pattern: ^[0-9A-Za-z]+$
+                  type: string
+              required:
+              - appPublicId
+              - userPubId
+              type: object
+      security:
+      - honeyIdAuth: []
+  /appAdminApi/set_app_member_role:
+    post:
+      operationId: appAdminApi_set_app_member_role
+      summary: set app member role
+      description: Change an app member's role (Owner, Admin, or Support). Only the app Owner may call
+        this.
+      tags:
+      - appAdminApi
+      x-endpoint-code: 30007
+      x-frontend-facing: true
+      x-roles:
+      - Admin
+      - AppAdmin
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                appPublicId:
+                  maxLength: 16
+                  minLength: 16
+                  pattern: ^[0-9A-Za-z]+$
+                  type: string
+                role:
+                  $ref: '#/components/schemas/AppMemberRole'
+                userPubId:
+                  maxLength: 16
+                  minLength: 16
+                  pattern: ^[0-9A-Za-z]+$
+                  type: string
+              required:
+              - appPublicId
+              - userPubId
+              - role
+              type: object
+      security:
+      - honeyIdAuth: []
+  /appAdminApi/list_app_members:
+    post:
+      operationId: appAdminApi_list_app_members
+      summary: list app members
+      description: List members of an app with their roles and support-enabled status.
+      tags:
+      - appAdminApi
+      x-endpoint-code: 30008
+      x-frontend-facing: true
+      x-roles:
+      - Admin
+      - AppAdmin
+      - Support
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  data:
+                    items:
+                      $ref: '#/components/schemas/AppMember'
+                    type: array
+                required:
+                - data
+                type: object
+        '400':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                appPublicId:
+                  maxLength: 16
+                  minLength: 16
+                  pattern: ^[0-9A-Za-z]+$
+                  type: string
+              required:
+              - appPublicId
+              type: object
+      security:
+      - honeyIdAuth: []
+  /appAdminApi/enable_message_persistence:
+    post:
+      operationId: appAdminApi_enable_message_persistence
+      summary: enable message persistence
+      description: Enable disk persistence for the app's chat messages; existing in-memory messages are
+        migrated to disk.
+      tags:
+      - appAdminApi
+      x-endpoint-code: 30009
+      x-frontend-facing: true
+      x-roles:
+      - Admin
+      - AppAdmin
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                appPublicId:
+                  maxLength: 16
+                  minLength: 16
+                  pattern: ^[0-9A-Za-z]+$
+                  type: string
+              required:
+              - appPublicId
+              type: object
+      security:
+      - honeyIdAuth: []
+  /appAdminApi/disable_message_persistence:
+    post:
+      operationId: appAdminApi_disable_message_persistence
+      summary: disable message persistence
+      description: Disable disk persistence for the app's chat messages; existing messages are migrated
+        to the in-memory store (purged after 24h).
+      tags:
+      - appAdminApi
+      x-endpoint-code: 30010
+      x-frontend-facing: true
+      x-roles:
+      - Admin
+      - AppAdmin
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                appPublicId:
+                  maxLength: 16
+                  minLength: 16
+                  pattern: ^[0-9A-Za-z]+$
+                  type: string
+              required:
+              - appPublicId
+              type: object
+      security:
+      - honeyIdAuth: []
+  /appApi/create_chat_session:
+    post:
+      operationId: appApi_create_chat_session
+      summary: create chat session
+      description: Create a new support chat session for the given end-user of this app. Returns the 16-character
+        session_id used by all subsequent message operations. Caller must be an App connection.
+      tags:
+      - appApi
+      x-endpoint-code: 20001
+      x-frontend-facing: true
+      x-roles:
+      - App
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  createdAt:
+                    description: Unix timestamp in milliseconds
+                    type: integer
+                  sessionId:
+                    maxLength: 16
+                    minLength: 16
+                    pattern: ^[0-9A-Za-z]+$
+                    type: string
+                required:
+                - sessionId
+                - createdAt
+                type: object
+        '400':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                userPubId:
+                  maxLength: 16
+                  minLength: 16
+                  pattern: ^[0-9A-Za-z]+$
+                  type: string
+              required:
+              - userPubId
+              type: object
+      security:
+      - honeyIdAuth: []
+  /appApi/send_message:
+    post:
+      operationId: appApi_send_message
+      summary: send message
+      description: Send a message into an existing chat session. The message is stored and relayed to
+        the app's support staff via Telegram. Support staff reply from Telegram, not via this endpoint.
+      tags:
+      - appApi
+      x-endpoint-code: 20002
+      x-frontend-facing: true
+      x-roles:
+      - App
+      - User
+      - AppAdmin
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  sentAt:
+                    description: Unix timestamp in milliseconds
+                    type: integer
+                required:
+                - sentAt
+                type: object
+        '400':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                content:
+                  type: string
+                sessionId:
+                  maxLength: 16
+                  minLength: 16
+                  pattern: ^[0-9A-Za-z]+$
+                  type: string
+              required:
+              - sessionId
+              - content
+              type: object
+      security:
+      - honeyIdAuth: []
+  /appApi/list_messages:
+    post:
+      operationId: appApi_list_messages
+      summary: list messages
+      description: List all messages of a chat session, oldest first.
+      tags:
+      - appApi
+      x-endpoint-code: 20003
+      x-frontend-facing: true
+      x-roles:
+      - App
+      - User
+      - AppAdmin
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  data:
+                    items:
+                      $ref: '#/components/schemas/ChatMessage'
+                    type: array
+                required:
+                - data
+                type: object
+        '400':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                sessionId:
+                  maxLength: 16
+                  minLength: 16
+                  pattern: ^[0-9A-Za-z]+$
+                  type: string
+              required:
+              - sessionId
+              type: object
+      security:
+      - honeyIdAuth: []
+  /appApi/subscribe_events:
+    post:
+      operationId: appApi_subscribe_events
+      summary: subscribe events
+      description: 'Subscribe to live chat events (new messages) for a session; pass unsub: true to unsubscribe.
+        Events are delivered as stream frames over the legacy protocol only.'
+      tags:
+      - appApi
+      x-endpoint-code: 20004
+      x-frontend-facing: true
+      x-roles:
+      - App
+      - User
+      - AppAdmin
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  data:
+                    items:
+                      $ref: '#/components/schemas/ChatMessage'
+                    type: array
+                required:
+                - data
+                type: object
+        '400':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                sessionId:
+                  maxLength: 16
+                  minLength: 16
+                  pattern: ^[0-9A-Za-z]+$
+                  type: string
+                unsub:
+                  type: boolean
+              required:
+              - sessionId
+              type: object
+      security:
+      - honeyIdAuth: []
+  /appApi/close_chat_session:
+    post:
+      operationId: appApi_close_chat_session
+      summary: close chat session
+      description: Close a chat session; no further messages can be sent to it.
+      tags:
+      - appApi
+      x-endpoint-code: 20005
+      x-frontend-facing: true
+      x-roles:
+      - App
+      - User
+      - AppAdmin
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                sessionId:
+                  maxLength: 16
+                  minLength: 16
+                  pattern: ^[0-9A-Za-z]+$
+                  type: string
+              required:
+              - sessionId
+              type: object
+      security:
+      - honeyIdAuth: []
+  /appApi/list_chat_sessions:
+    post:
+      operationId: appApi_list_chat_sessions
+      summary: list chat sessions
+      description: List chat sessions visible to the caller (the app's sessions for App connections, the
+        user's own sessions otherwise).
+      tags:
+      - appApi
+      x-endpoint-code: 20006
+      x-frontend-facing: true
+      x-roles:
+      - App
+      - User
+      - AppAdmin
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  data:
+                    items:
+                      $ref: '#/components/schemas/ChatSession'
+                    type: array
+                required:
+                - data
+                type: object
+        '400':
+          $ref: '#/components/responses/Error'
+      security:
+      - honeyIdAuth: []
+  /appConnect/app_connect:
+    post:
+      operationId: appConnect_app_connect
+      summary: app connect
+      description: Connect as an app widget on behalf of an end-user, declaring the app and user public
+        ids. Runs at WebSocket handshake time via the Sec-WebSocket-Protocol header; not callable as a
+        tool.
+      tags:
+      - appConnect
+      x-endpoint-code: 20000
+      x-frontend-facing: true
+      x-roles:
+      - Public
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  appName:
+                    type: string
+                  appPublicId:
+                    maxLength: 16
+                    minLength: 16
+                    pattern: ^[0-9A-Za-z]+$
+                    type: string
+                required:
+                - appPublicId
+                type: object
+        '400':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                appPublicId:
+                  maxLength: 16
+                  minLength: 16
+                  pattern: ^[0-9A-Za-z]+$
+                  type: string
+                userPublicId:
+                  maxLength: 16
+                  minLength: 16
+                  pattern: ^[0-9A-Za-z]+$
+                  type: string
+              required:
+              - appPublicId
+              - userPublicId
+              type: object
+  /authApi/init:
+    post:
+      operationId: authApi_init
+      summary: init
+      description: Authenticate this connection with a honey.id access token. Runs at WebSocket handshake
+        time via the Sec-WebSocket-Protocol header; not callable as a tool.
+      tags:
+      - authApi
+      x-endpoint-code: 10000
+      x-frontend-facing: true
+      x-roles:
+      - Public
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  role:
+                    $ref: '#/components/schemas/UserRole'
+                  userId:
+                    maxLength: 16
+                    minLength: 16
+                    pattern: ^[0-9A-Za-z]+$
+                    type: string
+                  version:
+                    type: string
+                required:
+                - userId
+                - role
+                - version
+                type: object
+        '400':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                accessToken:
+                  type: string
+              required:
+              - accessToken
+              type: object
+  /supportApi/set_my_tg_handle:
+    post:
+      operationId: supportApi_set_my_tg_handle
+      summary: set my tg handle
+      description: Set the caller's Telegram handle, used to route support replies. The handle is bound
+        to a Telegram chat when the member sends /start to the app's bot.
+      tags:
+      - supportApi
+      x-endpoint-code: 20007
+      x-frontend-facing: true
+      x-roles:
+      - Admin
+      - AppAdmin
+      - Support
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                tgHandle:
+                  type: string
+              required:
+              - tgHandle
+              type: object
+      security:
+      - honeyIdAuth: []
+  /supportApi/get_my_tg_handle:
+    post:
+      operationId: supportApi_get_my_tg_handle
+      summary: get my tg handle
+      description: Get the caller's currently configured Telegram handle, if any.
+      tags:
+      - supportApi
+      x-endpoint-code: 20008
+      x-frontend-facing: true
+      x-roles:
+      - Admin
+      - AppAdmin
+      - Support
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  tgHandle:
+                    type: string
+                required: []
+                type: object
+        '400':
+          $ref: '#/components/responses/Error'
+      security:
+      - honeyIdAuth: []
+  /userApi/get_my_info:
+    post:
+      operationId: userApi_get_my_info
+      summary: get my info
+      description: Return the caller's public id, username, and platform role.
+      tags:
+      - userApi
+      x-endpoint-code: 60000
+      x-frontend-facing: true
+      x-roles:
+      - User
+      - Support
+      - AppAdmin
+      - Admin
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  pubId:
+                    maxLength: 16
+                    minLength: 16
+                    pattern: ^[0-9A-Za-z]+$
+                    type: string
+                  role:
+                    $ref: '#/components/schemas/UserRole'
+                  username:
+                    type: string
+                required:
+                - pubId
+                - username
+                - role
+                type: object
+        '400':
+          $ref: '#/components/responses/Error'
+      security:
+      - honeyIdAuth: []
+components:
+  schemas:
+    LogLevel:
+      oneOf:
+      - const: 0
+        description: Trace-level logging
+        title: Trace
+      - const: 1
+        description: Debug-level logging
+        title: Debug
+      - const: 2
+        description: Info-level logging
+        title: Info
+      - const: 3
+        description: Warn-level logging
+        title: Warn
+      - const: 4
+        description: Error-level logging
+        title: Error
+      title: LogLevel
+      type: integer
+    UserInfo:
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+        pubId:
+          maxLength: 16
+          minLength: 16
+          pattern: ^[0-9A-Za-z]+$
+          type: string
+        role:
+          $ref: '#/components/schemas/UserRole'
+        username:
+          type: string
+      required:
+      - id
+      - pubId
+      - username
+      - role
+      type: object
+    UserRole:
+      oneOf:
+      - const: 0
+        description: Unauthenticated
+        title: Public
+      - const: 1
+        description: Platform admin
+        title: Admin
+      - const: 2
+        description: App frontend connection
+        title: App
+      - const: 3
+        description: User authenticated via honey.id token
+        title: User
+      - const: 4
+        description: App admin authenticated via honey.id Init
+        title: AppAdmin
+      - const: 5
+        description: Support user authenticated via honey.id Init
+        title: Support
+      - const: 6
+        description: honey.id callback endpoints
+        title: HoneyAuth
+      title: UserRole
+      type: integer
+    AppInfo:
+      additionalProperties: false
+      properties:
+        active:
+          type: boolean
+        appName:
+          type: string
+        createdAt:
+          description: Unix timestamp in milliseconds
+          type: integer
+        publicId:
+          maxLength: 16
+          minLength: 16
+          pattern: ^[0-9A-Za-z]+$
+          type: string
+      required:
+      - publicId
+      - active
+      - createdAt
+      type: object
+    AppConfig:
+      additionalProperties: false
+      properties:
+        active:
+          type: boolean
+        appName:
+          type: string
+        appPublicId:
+          maxLength: 16
+          minLength: 16
+          pattern: ^[0-9A-Za-z]+$
+          type: string
+        createdAt:
+          description: Unix timestamp in milliseconds
+          type: integer
+        messagePersistenceEnabled:
+          type: boolean
+        tgBotToken:
+          type: string
+      required:
+      - appPublicId
+      - tgBotToken
+      - active
+      - messagePersistenceEnabled
+      - createdAt
+      type: object
+    AppMemberRole:
+      oneOf:
+      - const: 0
+        description: App owner
+        title: Owner
+      - const: 1
+        description: App admin
+        title: Admin
+      - const: 2
+        description: App support member
+        title: Support
+      title: AppMemberRole
+      type: integer
+    AppMember:
+      additionalProperties: false
+      properties:
+        appPublicId:
+          maxLength: 16
+          minLength: 16
+          pattern: ^[0-9A-Za-z]+$
+          type: string
+        createdAt:
+          description: Unix timestamp in milliseconds
+          type: integer
+        isSupportEnabled:
+          type: boolean
+        role:
+          $ref: '#/components/schemas/AppMemberRole'
+        tgHandle:
+          type: string
+        userPubId:
+          maxLength: 16
+          minLength: 16
+          pattern: ^[0-9A-Za-z]+$
+          type: string
+        username:
+          type: string
+      required:
+      - appPublicId
+      - userPubId
+      - username
+      - role
+      - createdAt
+      - isSupportEnabled
+      type: object
+    ChatMessage:
+      additionalProperties: false
+      properties:
+        content:
+          type: string
+        incoming:
+          type: boolean
+        sentAt:
+          description: Unix timestamp in milliseconds
+          type: integer
+        sentBy:
+          type: string
+        sessionId:
+          maxLength: 16
+          minLength: 16
+          pattern: ^[0-9A-Za-z]+$
+          type: string
+      required:
+      - sessionId
+      - incoming
+      - sentBy
+      - sentAt
+      - content
+      type: object
+    ChatSession:
+      additionalProperties: false
+      properties:
+        appPublicId:
+          maxLength: 16
+          minLength: 16
+          pattern: ^[0-9A-Za-z]+$
+          type: string
+        closedAt:
+          description: Unix timestamp in milliseconds
+          type: integer
+        createdAt:
+          description: Unix timestamp in milliseconds
+          type: integer
+        sessionId:
+          maxLength: 16
+          minLength: 16
+          pattern: ^[0-9A-Za-z]+$
+          type: string
+        userPubId:
+          maxLength: 16
+          minLength: 16
+          pattern: ^[0-9A-Za-z]+$
+          type: string
+      required:
+      - sessionId
+      - appPublicId
+      - userPubId
+      - createdAt
+      type: object
+  responses:
+    Error:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              code:
+                type: integer
+              message:
+                type: string
+            required:
+            - code
+            - message
+            additionalProperties: false
+  securitySchemes:
+    honeyIdAuth:
+      type: http
+      scheme: bearer
+      description: honey.id token; role checked against x-roles
