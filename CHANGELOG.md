@@ -1,6 +1,12 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [1.13.0] - 2026-07-26
+
+### Features
+
+- [**breaking**] Make the OpenAPI and AsyncAPI documents opt-in
+
 ## [1.12.0] - 2026-07-25
 
 ### Features
