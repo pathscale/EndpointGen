@@ -1,7 +1,7 @@
 # endpoint-gen
 
 [![Crates.io](https://img.shields.io/crates/v/endpoint-gen.svg)](https://crates.io/crates/endpoint-gen)
-[![dependency status](https://deps.rs/crate/endpoint-gen/1.13.0/status.svg)](https://deps.rs/crate/endpoint-gen/1.13.0)
+[![dependency status](https://deps.rs/crate/endpoint-gen/1.13.1/status.svg)](https://deps.rs/crate/endpoint-gen/1.13.1)
 
 Schema-first code generator for WebSocket RPC services. You describe endpoints once in
 declarative RON; `endpoint-gen` produces the Rust models, the human-facing docs, the MCP
@@ -9,6 +9,14 @@ tool schemas, and — optionally — OpenAPI 3.1 and AsyncAPI 3.0 documents.
 
 The generated code targets [`endpoint-libs`](https://github.com/pathscale/endpoint-libs),
 which is the runtime that serves it.
+
+**Shipping an MCP server is close to free.** Define an endpoint in RON, and its MCP tool
+definition — name, description, `inputSchema`, `outputSchema` — is generated with
+everything else. `endpoint-libs` exposes the lot over JSON-RPC 2.0 with one `enable_mcp()`
+call, on the same socket the RPC protocol already uses, with `tools/list` filtered by the
+caller's roles. No tool definitions to hand-write, no JSON Schema to maintain by hand, no
+separate MCP server to deploy and keep in sync. `docs/<service>_mcp_tools.json` shows
+exactly what agents will see, so a schema change is a reviewable diff.
 
 The codegen arrow points **from the schema to the code**, which is the whole point: most
 Rust OpenAPI crates (`utoipa`, `aide`, `poem-openapi`, `dropshot`) derive a spec *from*
@@ -38,8 +46,45 @@ endpoint-gen --config-dir <path/to/config> --output-dir <path/to/project>
 | `--public-only` | Restrict the specification documents to `frontend_facing` endpoints. |
 | `--allow-empty-descriptions` | Permit missing endpoint/variant/error descriptions. Legacy escape hatch. |
 
-Always written: `generated/model.rs`, `docs/README.md`, `docs/services.json`,
-`docs/<service>_mcp_tools.json`, `docs/error_codes/error_codes.md`.
+### Generated artifacts
+
+| Path | Always? | What it is |
+|---|---|---|
+| `generated/model.rs` | yes | Rust types, method codes, handler scaffolding. Gitignored in our repos. |
+| `docs/services.json` | **yes** | **Machine-readable endpoint description in our own format** — see below. |
+| `docs/<service>_mcp_tools.json` | yes | Exactly what a server reports via MCP `tools/list`. |
+| `docs/README.md` | yes | Human-facing reference. |
+| `docs/error_codes/error_codes.md` | yes | The error-code catalog. |
+| `docs/asyncapi.json` | `--asyncapi` | AsyncAPI 3.0 — the protocol, in a standard format. |
+| `docs/openapi.json` | `--openapi` | OpenAPI 3.1 — a projection for HTTP tooling. |
+| `docs/openapi-README.md` | with either | Explains whichever specification documents you enabled. |
+
+#### `services.json` and AsyncAPI are parallel, not sequential
+
+The specification documents were added in 2.1 and **deprecate nothing**. `services.json`
+remains the primary machine-readable artifact and the one to build internal tooling
+against:
+
+```json
+{ "services": [ { "name": "userApi", "id": 1,
+                  "endpoints": [ { "name": "...", "code": 10000, "description": "...",
+                                   "parameters": [...], "returns": [...], "errors": [...],
+                                   "roles": [...], "stream_response": null } ] } ],
+  "enums": [...], "structs": [...] }
+```
+
+It is always written, it is a format we define and control, and it changes when we decide
+it changes. For anything inside our own stack that is materially less friction than
+conforming to a specification whose vocabulary only approximately fits a WebSocket RPC
+protocol.
+
+Reach for `--asyncapi` when a consumer *outside* your control needs to read the protocol
+and a bespoke format would be the obstacle. Both describe the same endpoints; pick by
+audience.
+
+One behavioural difference worth knowing: `services.json` contains **only
+`frontend_facing` endpoints**, always. The specification documents contain everything
+unless you pass `--public-only`.
 
 ### `--check`
 
@@ -65,7 +110,7 @@ committed artifacts to your repository.
 
 > The OpenAPI document is a **projection for tooling, not a servable API**. This transport
 > has no URLs, so paths are synthesized as `/{serviceName}/{endpoint_snake_name}`. The
-> AsyncAPI document is the authoritative description of the wire protocol. Both carry that
+> AsyncAPI document is the accurate one of the two. Both carry that
 > warning in `info.description`, and `docs/openapi-README.md` is generated alongside them.
 
 ## Config Directory
