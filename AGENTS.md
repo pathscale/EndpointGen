@@ -9,6 +9,18 @@ natively, and Claude Code loads it through the `@AGENTS.md` import in
 
 ## Invariants (don't break these)
 
+- **This crate is one node in a coupled chain.** endpoint-libs, endpoint-gen,
+  honey_id-types, endpoint-validator and the six backends break each other silently —
+  not in the repo you edited, but later, elsewhere, with an error that does not name the
+  cause. Before calling a change done, run the chain check:
+
+  ```bash
+  ~/code/endpoint-libs/scripts/check-chain.sh
+  ```
+
+  Background and the traps that have actually bitten: [`~/code/CLAUDE.md`](../CLAUDE.md)
+  and [`endpoint-libs/docs/release-order.md`](../endpoint-libs/docs/release-order.md).
+
 - **Keep `cargo fmt` and `cargo clippy --all-targets` clean.** Lint failures are part of the build here, not advisory.
 - **Publishing to crates.io is irreversible.** A version number can never be reused, and yanking does not delete. Run `cargo publish --dry-run` first, publish from the merged default branch, and tag the release.
 - **A pre-release version (`-alpha`, `-beta`) needs an exact dependency pin.** A plain `"2.0"` requirement will not match `2.0.0-alpha.1`, so consumers must be bumped deliberately.
