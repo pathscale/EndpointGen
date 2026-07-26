@@ -1,6 +1,12 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [1.13.1] - 2026-07-26
+
+### Documentation
+
+- Document every flag, and correct the version-compatibility rule
+
 ## [1.13.0] - 2026-07-26
 
 ### Features
