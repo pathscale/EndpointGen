@@ -3,7 +3,18 @@
 [![Crates.io](https://img.shields.io/crates/v/endpoint-gen.svg)](https://crates.io/crates/endpoint-gen)
 [![dependency status](https://deps.rs/crate/endpoint-gen/1.13.0/status.svg)](https://deps.rs/crate/endpoint-gen/1.13.0)
 
-A CLI code generator for WebSocket API endpoints used across Pathscale projects. Reads `.ron` config files describing services, enums, and structs, and generates Rust model code and documentation.
+Schema-first code generator for WebSocket RPC services. You describe endpoints once in
+declarative RON; `endpoint-gen` produces the Rust models, the human-facing docs, the MCP
+tool schemas, and — optionally — OpenAPI 3.1 and AsyncAPI 3.0 documents.
+
+The generated code targets [`endpoint-libs`](https://github.com/pathscale/endpoint-libs),
+which is the runtime that serves it.
+
+The codegen arrow points **from the schema to the code**, which is the whole point: most
+Rust OpenAPI crates (`utoipa`, `aide`, `poem-openapi`, `dropshot`) derive a spec *from*
+hand-written handlers and so delete no boilerplate. See
+[endpoint-libs' comparison doc](https://github.com/pathscale/endpoint-libs/blob/main/docs/comparison.md)
+for when you should use one of those instead.
 
 ## Installation
 
@@ -17,10 +28,45 @@ cargo install endpoint-gen
 endpoint-gen --config-dir <path/to/config> --output-dir <path/to/project>
 ```
 
-- `--config-dir`: directory containing `.ron` config files and `version.toml` (defaults to current directory)
-- `--output-dir`: root of the project where `generated/` will be written (defaults to current directory)
+| Flag | Effect |
+|---|---|
+| `--config-dir <path>` | Directory holding the `.ron` files and `version.toml`. Defaults to the current directory. |
+| `--output-dir <path>` | Project root; `generated/` is written beneath it. Defaults to the current directory. |
+| `--check` | Verify instead of write — see below. |
+| `--openapi` | Also emit `docs/openapi.json` (OpenAPI 3.1). Off by default. |
+| `--asyncapi` | Also emit `docs/asyncapi.json` (AsyncAPI 3.0). Off by default. |
+| `--public-only` | Restrict the specification documents to `frontend_facing` endpoints. |
+| `--allow-empty-descriptions` | Permit missing endpoint/variant/error descriptions. Legacy escape hatch. |
 
-Generated files are written to `<output-dir>/generated/`.
+Always written: `generated/model.rs`, `docs/README.md`, `docs/services.json`,
+`docs/<service>_mcp_tools.json`, `docs/error_codes/error_codes.md`.
+
+### `--check`
+
+Regenerates everything into a temporary directory and diffs it against the committed
+`docs/` tree, writing nothing and exiting non-zero on drift.
+
+```sh
+endpoint-gen --config-dir config --check
+```
+
+A committed artifact is only trustworthy if something proves it still matches its source;
+this is that proof, and it belongs in CI. Only `docs/` is compared — `generated/` is
+gitignored in every consumer repo, so it is not a committed artifact and cannot
+meaningfully drift.
+
+Pass the same spec flags you generate with, or the check will report the documents you
+chose not to emit as missing.
+
+### Specification documents
+
+`--openapi` and `--asyncapi` are **opt-in**: upgrading the generator will not start adding
+committed artifacts to your repository.
+
+> The OpenAPI document is a **projection for tooling, not a servable API**. This transport
+> has no URLs, so paths are synthesized as `/{serviceName}/{endpoint_snake_name}`. The
+> AsyncAPI document is the authoritative description of the wire protocol. Both carry that
+> warning in `info.description`, and `docs/openapi-README.md` is generated alongside them.
 
 ## Config Directory
 
@@ -215,11 +261,34 @@ Config(
 
 This applies the configuration to all child elements. When enabled, the generated code will include `schemars::JsonSchema` derives and imports. Your project must include the `schemars` crate as a dependency to use this feature.
 
-## Version Compatibility
+## Version compatibility
 
-`endpoint-gen` and `endpoint-libs` are versioned together. **Minor versions must match** between all Pathscale crates in a project (`endpoint-gen`, `endpoint-libs`, `honey_id-types`).
+`endpoint-gen` and `endpoint-libs` are **not** versioned together and their minor versions
+need not match — as of this writing endpoint-gen 1.13 works with endpoint-libs 2.1 and
+honey_id-types 2.0.
 
-For example, `endpoint-gen 1.3.x` must be paired with `endpoint-libs 1.3.x`.
+What is enforced, at generation time:
+
+- `endpoint-gen` is built against a specific `endpoint-libs` requirement (currently `^2.1`)
+  and compares it against `[libs] version` in your `config/version.toml`.
+- Your `config/version.toml` declares a requirement on the binary via `[binary] version`.
+
+A mismatch on either fails generation with an explicit message rather than emitting subtly
+wrong code. Keep `[libs] version` in step with what `Cargo.lock` actually resolves — a
+stale declaration is the usual cause of a confusing refusal to run.
+
+```toml
+# config/version.toml
+[binary]
+version = "1.13.0"   # a caret range: any 1.x >= 1.13.0
+
+[libs]
+version = "2.1.0"    # the concrete endpoint-libs version this repo builds against
+```
+
+The release order across the whole chain — endpoint-libs first, then honey_id-types and
+endpoint-gen, then the backends — is documented in
+[endpoint-libs' release-order runbook](https://github.com/pathscale/endpoint-libs/blob/main/docs/release-order.md).
 
 ## Releasing
 
