@@ -15,11 +15,12 @@ natively, and Claude Code loads it through the `@AGENTS.md` import in
   cause. Before calling a change done, run the chain check:
 
   ```bash
-  ~/code/endpoint-libs/scripts/check-chain.sh
+  path/to/endpoint-libs/scripts/check-chain.sh
   ```
 
-  Background and the traps that have actually bitten: [`~/code/CLAUDE.md`](../CLAUDE.md)
-  and [`endpoint-libs/docs/release-order.md`](../endpoint-libs/docs/release-order.md).
+  The script lives in the endpoint-libs checkout and skips repos you do not have.
+  Background and the traps that have actually bitten: [endpoint-libs `docs/chain.md`](https://github.com/pathscale/endpoint-libs/blob/main/docs/chain.md)
+  and [`docs/release-order.md`](https://github.com/pathscale/endpoint-libs/blob/main/docs/release-order.md).
 
 - **Keep `cargo fmt` and `cargo clippy --all-targets` clean.** Lint failures are part of the build here, not advisory.
 - **Publishing to crates.io is irreversible.** A version number can never be reused, and yanking does not delete. Run `cargo publish --dry-run` first, publish from the merged default branch, and tag the release.
