@@ -5,7 +5,11 @@ name = "endpoint-gen"
 version = "1.13.0"
 edition = "2024"
 repository = "https://github.com/pathscale/EndpointGen/"
-description = "Generate Rust code for websocket API endpoints"
+description = "Schema-first code generator for WebSocket RPC services: turns declarative RON endpoint definitions into Rust models, docs, MCP tool schemas, and optional OpenAPI 3.1 / AsyncAPI 3.0 documents."
+homepage = "https://github.com/pathscale/EndpointGen"
+documentation = "https://docs.rs/endpoint-gen"
+keywords = ["codegen", "websocket", "rpc", "openapi", "mcp"]
+categories = ["development-tools", "command-line-utilities", "web-programming::websocket"]
 license = "MIT"
 
 [dependencies]
