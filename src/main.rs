@@ -41,11 +41,29 @@ struct Cli {
     #[arg(long)]
     allow_empty_descriptions: bool,
 
-    /// Emit only `frontend_facing` endpoints into the OpenAPI/AsyncAPI
-    /// documents — the version you would hand to a third party.
+    /// Emit `docs/openapi.json` (OpenAPI 3.1).
     ///
-    /// Filtering is per endpoint, not per service. Does not affect the Rust
-    /// output or the MCP tool lists.
+    /// Off by default. The paths in that document are synthesized — the
+    /// transport is a WebSocket — so it is a projection for tooling, not a
+    /// servable API, and it is not something a repo should acquire merely by
+    /// upgrading the generator. Opt in when you actually want it.
+    #[arg(long)]
+    openapi: bool,
+
+    /// Emit `docs/asyncapi.json` (AsyncAPI 3.0), the authoritative description
+    /// of the wire protocol.
+    ///
+    /// Off by default, for the same reason as `--openapi`: upgrading the
+    /// generator should not add committed artifacts to a repo on its own.
+    #[arg(long)]
+    asyncapi: bool,
+
+    /// Emit only `frontend_facing` endpoints into the specification documents —
+    /// the version you would hand to a third party.
+    ///
+    /// Filtering is per endpoint, not per service. Only meaningful with
+    /// `--openapi` and/or `--asyncapi`; does not affect the Rust output or the
+    /// MCP tool lists.
     #[arg(long)]
     public_only: bool,
 
@@ -104,18 +122,41 @@ fn main() -> Result<()> {
         error_codes: input_objects.error_codes,
     };
 
+    let specs = SpecOptions {
+        openapi: args.openapi,
+        asyncapi: args.asyncapi,
+        public_only: args.public_only,
+    };
+
     if args.check {
-        return run_check(&data, args.public_only);
+        return run_check(&data, specs);
     }
 
-    run_generation(&data, args.public_only)
+    run_generation(&data, specs)
+}
+
+/// Which specification documents to emit, and how.
+///
+/// Both default to off: upgrading `endpoint-gen` must not add committed
+/// artifacts to a repository that never asked for them.
+#[derive(Debug, Clone, Copy)]
+struct SpecOptions {
+    openapi: bool,
+    asyncapi: bool,
+    public_only: bool,
+}
+
+impl SpecOptions {
+    fn any(&self) -> bool {
+        self.openapi || self.asyncapi
+    }
 }
 
 /// Writes every artifact rooted at `data.project_root` / `data.output_dir`.
 ///
 /// Kept separate from `main` so `--check` can run the identical pipeline into a
 /// scratch directory. If these ever diverge, `--check` starts lying.
-fn run_generation(data: &Data, public_only: bool) -> Result<()> {
+fn run_generation(data: &Data, specs: SpecOptions) -> Result<()> {
     let docs_data = format_for_docs(data);
 
     docs::gen_services_docs(&docs_data)?;
@@ -124,9 +165,15 @@ fn run_generation(data: &Data, public_only: bool) -> Result<()> {
     // AsyncAPI document all camelCase field names themselves, matching the wire
     // format regardless of the snake_case_fields config.
     docs::gen_mcp_tools_json(data)?;
-    openapi::gen_openapi(data, public_only)?;
-    asyncapi::gen_asyncapi(data, public_only)?;
-    docs::gen_spec_readme(&data.project_root)?;
+    if specs.openapi {
+        openapi::gen_openapi(data, specs.public_only)?;
+    }
+    if specs.asyncapi {
+        asyncapi::gen_asyncapi(data, specs.public_only)?;
+    }
+    if specs.any() {
+        docs::gen_spec_readme(&data.project_root, specs.openapi, specs.asyncapi)?;
+    }
     rust::gen_model_rs(data)?;
     docs::gen_error_message_md(&data.project_root, &data.error_codes)?;
     Ok(())
@@ -136,7 +183,7 @@ fn run_generation(data: &Data, public_only: bool) -> Result<()> {
 ///
 /// Returns `Err` (non-zero exit) listing every drifted or missing file. Writes
 /// nothing to the project.
-fn run_check(data: &Data, public_only: bool) -> Result<()> {
+fn run_check(data: &Data, specs: SpecOptions) -> Result<()> {
     let scratch = tempfile::tempdir().wrap_err("failed to create scratch directory for --check")?;
 
     let staged = Data {
@@ -150,7 +197,7 @@ fn run_check(data: &Data, public_only: bool) -> Result<()> {
         structs: data.structs.clone(),
         error_codes: data.error_codes.clone(),
     };
-    run_generation(&staged, public_only)?;
+    run_generation(&staged, specs)?;
 
     let staged_docs = scratch.path().join("docs");
     let committed_docs = data.project_root.join("docs");
