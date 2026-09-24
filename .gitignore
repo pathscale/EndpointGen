@@ -9,3 +9,4 @@ examples/minimal_project/config/generated/*
 .vscode
 
 .idea/
+/Cargo.lock
