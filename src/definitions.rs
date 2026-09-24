@@ -317,13 +317,14 @@ impl ToRust for StructElement {
                 _ => "",
             };
             format!(
-                "{} {} pub {}: {}",
+                "{} {} {} pub {}: {}",
                 if opt { "#[serde(default)]" } else { "" },
                 if serde_with_opt.is_empty() {
                     "".to_string()
                 } else {
                     format!("#[serde(with = \"{serde_with_opt}\")]")
                 },
+                crate::rust::wire_rename_attr(&x.name),
                 x.name,
                 x.ty.to_rust_ref(serde_with)
             )
