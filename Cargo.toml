@@ -2,7 +2,7 @@
 
 [package]
 name = "endpoint-gen"
-version = "1.13.1"
+version = "1.14.0"
 edition = "2024"
 repository = "https://github.com/pathscale/EndpointGen/"
 description = "Schema-first code generator for WebSocket RPC services: turns declarative RON endpoint definitions into Rust models, docs, MCP tool schemas, and optional OpenAPI 3.1 / AsyncAPI 3.0 documents."
@@ -14,7 +14,7 @@ license = "MIT"
 
 [dependencies]
 # Internal dependencies
-endpoint-libs = "2.1"
+endpoint-libs = "^3"
 endpoint-gen-macros = { path = "./endpoint-gen-macros", version = "1.3.4" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
