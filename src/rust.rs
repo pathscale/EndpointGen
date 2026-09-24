@@ -90,13 +90,14 @@ impl ToRust for Type {
                         _ => "",
                     };
                     format!(
-                        "{} {} pub {}: {}",
+                        "{} {} {} pub {}: {}",
                         if opt { "#[serde(default)]" } else { "" },
                         if serde_with_opt.is_empty() {
                             "".to_string()
                         } else {
                             format!("#[serde(with = \"{serde_with_opt}\")]")
                         },
+                        wire_rename_attr(&x.name),
                         x.name,
                         x.ty.to_rust_ref(serde_with)
                     )
@@ -325,6 +326,22 @@ pub fn gen_model_rs(data: &Data) -> eyre::Result<()> {
         ""
     };
 
+    // Only a schema with a UUID field needs the uuid crate; the fleet has none,
+    // and an unconditional import forced every consumer to keep the dependency.
+    let uuid_import = if data.services.iter().flat_map(|s| &s.endpoints).any(|e| {
+        e.schema
+            .parameters
+            .iter()
+            .chain(&e.schema.returns)
+            .any(|f| uses_uuid(&f.ty))
+            || e.schema.stream_response.as_ref().is_some_and(uses_uuid)
+    }) || data.structs.iter().any(|s| uses_uuid(&s.inner))
+    {
+        "use uuid::Uuid;"
+    } else {
+        ""
+    };
+
     let mut model_file = File::create(&db_filename)?;
     write!(
         &mut model_file,
@@ -335,7 +352,7 @@ pub fn gen_model_rs(data: &Data) -> eyre::Result<()> {
         use num_derive::FromPrimitive;
         use serde::*;
         use strum_macros::{{Display, EnumString}};
-        use uuid::Uuid;
+        {uuid_import}
         use psc_nanoid::{{Nanoid, alphabet::Base62Alphabet}};
         use std::net::IpAddr;
         {worktable_imports}
@@ -572,6 +589,55 @@ pub fn type_registry() -> endpoint_libs::model::TypeRegistry {{
     );
     writeln!(writer, "{code}")?;
     Ok(())
+}
+
+/// A `#[serde(rename)]` for a snake_case field whose documented camelCase
+/// name serde would not produce by itself.
+///
+/// The docs and `services.json` camelCase field names with `convert_case`,
+/// which splits a word at a digit: `login_failures_count_24h` is documented as
+/// `loginFailuresCount24H`. The generated structs derive their wire names with
+/// `#[serde(rename_all = "camelCase")]`, which does not: serde sends
+/// `loginFailuresCount24h`. A frontend reading the documented name then reads
+/// nothing. Where the two disagree, the field is renamed to the documented
+/// name, so the wire matches the contract frontends are generated from.
+pub fn wire_rename_attr(field: &str) -> String {
+    if !field.contains('_') {
+        return String::new();
+    }
+    let documented = field.to_case(Case::Camel);
+    if documented == serde_camel_case(field) {
+        String::new()
+    } else {
+        format!("#[serde(rename = \"{documented}\")]")
+    }
+}
+
+/// What `#[serde(rename_all = "camelCase")]` makes of a snake_case field.
+fn serde_camel_case(field: &str) -> String {
+    let mut out = String::with_capacity(field.len());
+    let mut upper = false;
+    for c in field.chars() {
+        if c == '_' {
+            upper = true;
+        } else if upper {
+            out.extend(c.to_uppercase());
+            upper = false;
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// Whether `ty` is or contains a `UUID`.
+fn uses_uuid(ty: &Type) -> bool {
+    match ty {
+        Type::UUID => true,
+        Type::Optional(inner) | Type::Vec(inner) => uses_uuid(inner),
+        Type::Struct { fields, .. } => fields.iter().any(|f| uses_uuid(&f.ty)),
+        _ => false,
+    }
 }
 
 #[cfg(test)]
