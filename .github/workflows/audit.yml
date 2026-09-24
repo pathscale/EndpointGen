@@ -1,0 +1,17 @@
+name: Security audit
+
+# Run by hand: it takes minutes to install cargo-audit and rarely says anything
+# that changes a merge, so it is not in the CI every push waits on.
+on:
+  workflow_dispatch:
+
+jobs:
+  security_audit:
+    runs-on: ubicloud-standard-2
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve dependencies for audit
+        run: cargo generate-lockfile
+      - uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
