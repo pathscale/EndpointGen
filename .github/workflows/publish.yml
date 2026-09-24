@@ -1,0 +1,76 @@
+name: Publish
+
+# Bumping `version` in Cargo.toml in a normal PR is the whole release: when it
+# merges to master, this publishes whatever version crates.io does not have
+# yet. endpoint-gen-macros goes first, since endpoint-gen depends on it by
+# version. A merge that changes code but no version finds both published and
+# exits green.
+#
+# This exists because 1.14.0 merged and sat unpublished until someone ran
+# `cargo publish` by hand, while four repos already declared it in
+# config/version.toml.
+on:
+  push:
+    branches: [master]
+    paths:
+      - Cargo.toml
+      - build.rs
+      - src/**
+      - endpoint-gen-macros/**
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Package and verify, but do not upload'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: crates.io
+    runs-on: ubicloud-standard-2
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Test
+        run: cargo test --release
+
+      - name: Publish what is new
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          published() {
+            curl -sS -H 'User-Agent: pathscale-ci' "https://crates.io/api/v1/crates/$1/versions" \
+              | jq -r --arg v "$2" '.versions[]? | select(.num == $v) | .num'
+          }
+          for dir in endpoint-gen-macros .; do
+            name=$(cargo metadata --no-deps --format-version 1 --manifest-path "$dir/Cargo.toml" \
+              | jq -r --arg m "$(cd "$dir" && pwd)/Cargo.toml" '.packages[] | select(.manifest_path == $m) | .name')
+            version=$(cargo metadata --no-deps --format-version 1 --manifest-path "$dir/Cargo.toml" \
+              | jq -r --arg n "$name" '.packages[] | select(.name == $n) | .version')
+            if [ -n "$(published "$name" "$version")" ]; then
+              echo "$name $version is already on crates.io" | tee -a "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            if [ "$DRY_RUN" = "true" ]; then
+              cargo package --manifest-path "$dir/Cargo.toml"
+              echo "Dry run: packaged $name $version" | tee -a "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            if [ -z "$CARGO_REGISTRY_TOKEN" ]; then
+              echo "CARGO_REGISTRY_TOKEN is not set on this repository (Settings -> Secrets -> Actions)" >&2
+              exit 1
+            fi
+            cargo publish --manifest-path "$dir/Cargo.toml"
+            echo "Published $name $version" | tee -a "$GITHUB_STEP_SUMMARY"
+          done
