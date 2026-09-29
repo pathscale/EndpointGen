@@ -52,6 +52,7 @@ endpoint-gen --config-dir <path/to/config> --output-dir <path/to/project>
 |---|---|---|
 | `generated/model.rs` | yes | Rust types, method codes, handler scaffolding. Gitignored in our repos. |
 | `docs/services.json` | **yes** | **Machine-readable endpoint description in our own format** — see below. |
+| `docs/services.all.json` | **yes** | Same format as `services.json`, with every endpoint, including backend-only endpoints. |
 | `docs/<service>_mcp_tools.json` | yes | Exactly what a server reports via MCP `tools/list`. |
 | `docs/README.md` | yes | Human-facing reference. |
 | `docs/error_codes/error_codes.md` | yes | The error-code catalog. |
@@ -82,9 +83,10 @@ Reach for `--asyncapi` when a consumer *outside* your control needs to read the 
 and a bespoke format would be the obstacle. Both describe the same endpoints; pick by
 audience.
 
-One behavioural difference worth knowing: `services.json` contains **only
-`frontend_facing` endpoints**, always. The specification documents contain everything
-unless you pass `--public-only`.
+`services.json` contains **only `frontend_facing` endpoints**, always. Use
+`services.all.json` for tooling that exercises a running backend and needs backend-only
+endpoints as well. Both files include the same enums and structs. The specification
+documents contain everything unless you pass `--public-only`.
 
 ### `--check`
 

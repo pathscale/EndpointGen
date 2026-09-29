@@ -72,6 +72,36 @@ pub fn gen_services_docs(docs: &Data) -> eyre::Result<()> {
             "structs": structs,
         }),
     )?;
+
+    let all_services = docs
+        .services
+        .clone()
+        .into_iter()
+        .map(|service| {
+            let endpoints: Vec<EndpointSchema> =
+                service.endpoints.into_iter().map(|endpoint| endpoint.schema).collect();
+            Service::new(service.name, service.id, endpoints)
+        })
+        .filter(|service| !service.endpoints.is_empty())
+        .collect::<Vec<Service>>();
+
+    let all_docs_filename = docs.project_root.join("docs").join("services.all.json");
+    let mut all_docs_file = File::create(&all_docs_filename)
+        .with_context(|| format!("Failed to create docs file: {}", all_docs_filename.display()))?;
+
+    serde_json::to_writer_pretty(
+        &mut all_docs_file,
+        &json!({
+            "services": all_services,
+            "enums": doc_enums(docs),
+            "structs": docs
+                .structs
+                .clone()
+                .into_iter()
+                .map(|struct_element| struct_element.inner)
+                .collect::<Vec<Type>>(),
+        }),
+    )?;
     Ok(())
 }
 
@@ -488,7 +518,96 @@ actually return.
 mod tests {
     use super::*;
     use crate::definitions::{EndpointSchemaElement, RustGenConfig};
-    use endpoint_libs::model::Field;
+    use endpoint_libs::model::{EnumVariant, Field};
+
+    #[test]
+    fn services_json_stays_frontend_only_and_services_all_json_includes_every_endpoint() {
+        let dir = std::env::temp_dir().join(format!("endpointgen-services-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let endpoint = |name: &str, code: u32, frontend_facing: bool| EndpointSchemaElement {
+            frontend_facing,
+            config: RustGenConfig::default(),
+            schema: EndpointSchema::new(name, code, vec![], vec![]).with_description(format!("{name} endpoint.")),
+        };
+        let data = Data {
+            project_name: "test".into(),
+            project_root: dir.clone(),
+            output_dir: dir.clone(),
+            services: vec![
+                GenService::new(
+                    "user".into(),
+                    1,
+                    vec![
+                        endpoint("UserGetProfile", 10010, true),
+                        endpoint("UserIngest", 10011, false),
+                    ],
+                ),
+                GenService::new("watcher".into(), 2, vec![endpoint("WatcherIngest", 20010, false)]),
+            ],
+            enums: vec![EnumElement {
+                config: RustGenConfig::default(),
+                inner: Type::enum_("role", vec![EnumVariant::new("Admin", 1)]),
+            }],
+            structs: vec![StructElement {
+                config: RustGenConfig::default(),
+                inner: Type::struct_("UserInfo", vec![Field::new("id", Type::Int64)]),
+            }],
+            error_codes: vec![ErrorCodeSchema::new("not_found", 404, "The resource was not found.")],
+        };
+
+        gen_services_docs(&data).unwrap();
+
+        let services_json = std::fs::read_to_string(dir.join("docs").join("services.json")).unwrap();
+        let services_all_json = std::fs::read_to_string(dir.join("docs").join("services.all.json")).unwrap();
+        let public: serde_json::Value = serde_json::from_str(&services_json).unwrap();
+        let all: serde_json::Value = serde_json::from_str(&services_all_json).unwrap();
+
+        // Match the previous services.json payload and pretty-printing exactly.
+        let expected_services = data
+            .services
+            .clone()
+            .into_iter()
+            .map(|service| {
+                let endpoints = service
+                    .endpoints
+                    .into_iter()
+                    .filter(|endpoint| endpoint.frontend_facing)
+                    .map(|endpoint| endpoint.schema)
+                    .collect();
+                Service::new(service.name, service.id, endpoints)
+            })
+            .filter(|service| !service.endpoints.is_empty())
+            .collect::<Vec<Service>>();
+        let expected_structs = data
+            .structs
+            .clone()
+            .into_iter()
+            .map(|struct_element| struct_element.inner)
+            .collect::<Vec<Type>>();
+        let expected_services_json = serde_json::to_string_pretty(&json!({
+            "services": expected_services,
+            "enums": doc_enums(&data),
+            "structs": expected_structs,
+        }))
+        .unwrap();
+        assert_eq!(services_json, expected_services_json);
+
+        assert_eq!(public["services"].as_array().unwrap().len(), 1);
+        assert_eq!(public["services"][0]["name"], json!("user"));
+        assert_eq!(public["services"][0]["endpoints"].as_array().unwrap().len(), 1);
+        assert_eq!(public["services"][0]["endpoints"][0]["name"], json!("UserGetProfile"));
+
+        assert_eq!(all["services"].as_array().unwrap().len(), 2);
+        assert_eq!(all["services"][0]["endpoints"].as_array().unwrap().len(), 2);
+        assert_eq!(all["services"][0]["endpoints"][1]["name"], json!("UserIngest"));
+        assert_eq!(all["services"][1]["name"], json!("watcher"));
+        assert_eq!(all["services"][1]["endpoints"][0]["name"], json!("WatcherIngest"));
+        assert_eq!(all["enums"], public["enums"]);
+        assert_eq!(all["structs"], public["structs"]);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
 
     #[test]
     fn mcp_tools_json_is_written_per_service() {

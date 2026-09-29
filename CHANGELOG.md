@@ -1,6 +1,12 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [Unreleased]
+
+### Features
+
+- Emit `docs/services.all.json` with frontend-facing and backend-only endpoints
+
 ## [1.13.1] - 2026-07-26
 
 ### Documentation
