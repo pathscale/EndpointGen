@@ -147,7 +147,7 @@ Config(
 
 ### Endpoints
 
-Define a service's WebSocket endpoints with `EndpointSchemaList`. Each file specifies the service name, a unique numeric service ID, and a list of endpoint schemas.
+Define a service's WebSocket endpoints with `EndpointSchemaList`. Each file specifies the service name, a numeric service ID, and a list of endpoint schemas. Service IDs may be shared; endpoints are grouped by service name and ID, while endpoint codes must remain unique within each generated service enum.
 
 ```ron
 Config(
