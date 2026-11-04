@@ -8,11 +8,6 @@ name: Publish
 # Two crates: endpoint-gen-macros is published first, because endpoint-gen
 # depends on it by version. Each is checked and published on its own.
 on:
-  push:
-    branches: [master]
-    paths: ['Cargo.toml', 'endpoint-gen-macros/Cargo.toml']
-  # A release that was merged before this gate was fixed has no Cargo.toml
-  # change left to make, so it cannot be triggered by the push rule alone.
   workflow_dispatch:
 
 jobs:
