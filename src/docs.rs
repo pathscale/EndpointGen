@@ -105,6 +105,17 @@ pub fn gen_services_docs(docs: &Data) -> eyre::Result<()> {
     Ok(())
 }
 
+fn validate_output_component(value: &str, kind: &str) -> eyre::Result<()> {
+    if value.is_empty()
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+    {
+        eyre::bail!("invalid {kind}: expected ASCII letters, digits, underscore or hyphen");
+    }
+    Ok(())
+}
+
 fn error_code_enum(codes: &[ErrorCodeSchema]) -> Type {
     Type::enum_(
         "ErrorCode",
@@ -314,6 +325,10 @@ pub fn gen_mcp_tools_json(data: &Data) -> eyre::Result<()> {
     let docs_dir = data.project_root.join("docs");
     create_dir_all(&docs_dir)?;
 
+    for service in &data.services {
+        validate_output_component(&service.name, "service name")?;
+    }
+
     let mut registry = endpoint_libs::model::TypeRegistry::new();
     registry.add_all(crate::rust::shared_type_definitions(data).iter());
     for service in &data.services {
@@ -358,6 +373,10 @@ pub fn gen_mcp_tools_json(data: &Data) -> eyre::Result<()> {
 }
 
 pub fn gen_systemd_services(data: &Data, app_name: &str, user: &str) -> eyre::Result<()> {
+    validate_output_component(app_name, "application name")?;
+    for service in &data.services {
+        validate_output_component(&service.name, "service name")?;
+    }
     create_dir_all(data.project_root.join("etc").join("systemd"))?;
 
     for srv in &data.services {

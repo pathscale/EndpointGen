@@ -127,7 +127,7 @@ impl ToRust for Type {
                         } else {
                             format!(
                                 r#"
-    /// {}
+    #[doc = {:?}]
     {} = {}
 "#,
                                 x.description, variant_name, x.value
@@ -431,7 +431,7 @@ impl From<EnumErrorCode> for ErrorCode {{
 
     for s in &data.services {
         for endpoint in &s.endpoints {
-            let roles_list = resolve_roles_ids(&endpoint.schema.roles, &data.enums)
+            let roles_list = resolve_roles_ids(&endpoint.schema.roles, &data.enums)?
                 .into_iter()
                 .map(|x| x.to_string())
                 .join(", ");
@@ -443,7 +443,7 @@ impl WsRequest for {end_name2}Request {{
     type Response = {end_name2}Response;
     const METHOD_ID: u32 = {code};
     const ROLES: &[u32] = &[{roles_list}];
-    const SCHEMA: &'static str = r#\"{schema}\"#;
+    const SCHEMA: &'static str = {schema};
 }}
 impl WsResponse for {end_name2}Response {{
     type Request = {end_name2}Request;
@@ -451,7 +451,7 @@ impl WsResponse for {end_name2}Response {{
 ",
                 end_name2 = endpoint.schema.name.to_case(Case::Pascal),
                 code = endpoint.schema.code,
-                schema = serde_json::to_string_pretty(&endpoint.schema).unwrap()
+                schema = format!("{:?}", serde_json::to_string_pretty(&endpoint.schema)?)
             )?;
         }
     }
@@ -464,7 +464,7 @@ impl WsResponse for {end_name2}Response {{
 
 /// Resolves the IDs of roles from a list of role names and a list of enum types.
 /// endpoint_roles: vec!["Role1::Value1", "Role1::Value2"]
-fn resolve_roles_ids(endpoint_roles: &Vec<String>, all_enums: &Vec<EnumElement>) -> Vec<i64> {
+fn resolve_roles_ids(endpoint_roles: &Vec<String>, all_enums: &Vec<EnumElement>) -> eyre::Result<Vec<i64>> {
     let mut all_enums_typed: HashMap<String, Vec<EnumVariant>> = HashMap::new();
     for e in all_enums {
         if let Type::Enum { name: _, variants } = &e.inner {
@@ -480,21 +480,21 @@ fn resolve_roles_ids(endpoint_roles: &Vec<String>, all_enums: &Vec<EnumElement>)
             if let Some(role_variant_in_endpoint) = role_enum_variants.iter().find(|v| v.name == role_variant_name) {
                 roles_ids.push(role_variant_in_endpoint.value);
             } else {
-                eprintln!("Warning: Role variant '{role_variant_name}' not found in enum '{role_enum_name}'");
+                bail!("Role variant '{role_variant_name}' not found in enum '{role_enum_name}'");
             }
         } else {
-            eprintln!("Warning: Role enum '{role_enum_name}' not found");
+            bail!("Role enum '{role_enum_name}' not found");
         }
     }
-    // check there is not duplicate roles ids and print error if there are
+    // Reject duplicate role IDs instead of silently deduplicating them.
     let mut roles_ids_set: BTreeSet<i64> = BTreeSet::new();
     for id in &roles_ids {
         if !roles_ids_set.insert(*id) {
-            eprintln!("Warning: Duplicate role ID found: {id}");
+            bail!("Duplicate role ID found: {id}");
         }
     }
 
-    roles_ids_set.into_iter().collect()
+    Ok(roles_ids_set.into_iter().collect())
 }
 
 pub fn rustfmt(f: &Path) -> eyre::Result<()> {
@@ -570,11 +570,11 @@ pub fn shared_type_definitions(data: &Data) -> Vec<Type> {
 /// an `endpoint_libs::model::TypeRegistry` for `WebsocketServer::enable_mcp()`.
 pub fn dump_type_registry(data: &Data, mut writer: impl Write) -> eyre::Result<()> {
     let types = shared_type_definitions(data);
-    let serialized = serde_json::to_string_pretty(&types)?;
+    let serialized = format!("{:?}", serde_json::to_string_pretty(&types)?);
     let code = format!(
         r##"
 /// JSON-serialized shared struct/enum definitions referenced by endpoint schemas.
-pub const TYPE_DEFINITIONS: &'static str = r#"{serialized}"#;
+pub const TYPE_DEFINITIONS: &'static str = {serialized};
 
 /// Builds the type registry over all shared definitions, for use with
 /// `WebsocketServer::enable_mcp()`.
@@ -718,11 +718,12 @@ mod tests {
         assert!(code.contains("pub const TYPE_DEFINITIONS"));
         assert!(code.contains("pub fn type_registry()"));
 
-        // Extract the embedded JSON and round-trip it the way the generated
-        // type_registry() will at runtime.
-        let start = code.find("r#\"").unwrap() + 3;
-        let end = code.find("\"#").unwrap();
-        let types: Vec<Type> = serde_json::from_str(&code[start..end]).unwrap();
+        // Check the escaped literal and round-trip the serialized payload.
+        let serialized = serde_json::to_string_pretty(&shared_type_definitions(&data)).unwrap();
+        assert!(code.contains(&format!(
+            "pub const TYPE_DEFINITIONS: &'static str = {serialized:?};"
+        )));
+        let types: Vec<Type> = serde_json::from_str(&serialized).unwrap();
         // UserInfo struct + role enum + ErrorCode enum
         assert_eq!(types.len(), 3);
 
