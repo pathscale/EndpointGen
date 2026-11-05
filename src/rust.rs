@@ -720,9 +720,7 @@ mod tests {
 
         // Check the escaped literal and round-trip the serialized payload.
         let serialized = serde_json::to_string_pretty(&shared_type_definitions(&data)).unwrap();
-        assert!(code.contains(&format!(
-            "pub const TYPE_DEFINITIONS: &'static str = {serialized:?};"
-        )));
+        assert!(code.contains(&format!("pub const TYPE_DEFINITIONS: &'static str = {serialized:?};")));
         let types: Vec<Type> = serde_json::from_str(&serialized).unwrap();
         // UserInfo struct + role enum + ErrorCode enum
         assert_eq!(types.len(), 3);
