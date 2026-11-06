@@ -116,6 +116,13 @@ fn validate_output_component(value: &str, kind: &str) -> eyre::Result<()> {
     Ok(())
 }
 
+pub fn validate_service_names(services: &[GenService]) -> eyre::Result<()> {
+    for service in services {
+        validate_output_component(&service.name, "service name")?;
+    }
+    Ok(())
+}
+
 fn error_code_enum(codes: &[ErrorCodeSchema]) -> Type {
     Type::enum_(
         "ErrorCode",
@@ -322,12 +329,9 @@ ID: {}
 /// from these schemas will report it via `tools/list`. Intended for review —
 /// schema changes show up as diffs in these files.
 pub fn gen_mcp_tools_json(data: &Data) -> eyre::Result<()> {
+    validate_service_names(&data.services)?;
     let docs_dir = data.project_root.join("docs");
     create_dir_all(&docs_dir)?;
-
-    for service in &data.services {
-        validate_output_component(&service.name, "service name")?;
-    }
 
     let mut registry = endpoint_libs::model::TypeRegistry::new();
     registry.add_all(crate::rust::shared_type_definitions(data).iter());
@@ -374,9 +378,7 @@ pub fn gen_mcp_tools_json(data: &Data) -> eyre::Result<()> {
 
 pub fn gen_systemd_services(data: &Data, app_name: &str, user: &str) -> eyre::Result<()> {
     validate_output_component(app_name, "application name")?;
-    for service in &data.services {
-        validate_output_component(&service.name, "service name")?;
-    }
+    validate_service_names(&data.services)?;
     create_dir_all(data.project_root.join("etc").join("systemd"))?;
 
     for srv in &data.services {

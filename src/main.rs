@@ -157,6 +157,7 @@ impl SpecOptions {
 /// Kept separate from `main` so `--check` can run the identical pipeline into a
 /// scratch directory. If these ever diverge, `--check` starts lying.
 fn run_generation(data: &Data, specs: SpecOptions) -> Result<()> {
+    docs::validate_service_names(&data.services)?;
     let docs_data = format_for_docs(data);
 
     docs::gen_services_docs(&docs_data)?;
