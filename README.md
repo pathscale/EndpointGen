@@ -242,6 +242,8 @@ errors: [
 
 ### Enums
 
+Generated enum variants are ordered by their signed discriminant values.
+
 Define enums with `EnumList`:
 
 ```ron

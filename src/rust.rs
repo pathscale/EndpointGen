@@ -67,8 +67,6 @@ impl ToRust for Type {
     }
 
     fn to_rust_decl(&self, serde_with: bool, add_derives: bool) -> String {
-        let code_regex = regex::Regex::new(r"=\s*(\d+)").expect("Error building regex to extract endpoint code");
-
         match self {
             Type::Struct { name, fields } => {
                 let mut fields = fields.iter().map(|x| {
@@ -107,8 +105,9 @@ impl ToRust for Type {
                 if add_derives { self.add_derives(input) } else { input }
             }
             Type::Enum { name, variants: fields } => {
-                let mut fields = fields
+                let fields = fields
                     .iter()
+                    .sorted_by_key(|variant| variant.value)
                     .map(|x| {
                         let variant_name = if x.name.chars().last().unwrap().is_lowercase() {
                             x.name.to_case(Case::Pascal)
@@ -134,36 +133,7 @@ impl ToRust for Type {
                             )
                         }
                     })
-                    .sorted_by(|a, b| {
-                        // Sort by the endpoint code
-                        let code_a = {
-                            match code_regex.captures(a) {
-                                Some(code) => code[1].parse::<u64>().unwrap_or_else(|err| {
-                                    eprintln!("Sorting error: {err}: Rust output may not be sorted correctly");
-                                    0
-                                }),
-                                None => {
-                                    eprintln!("Sorting error: Rust output may not be sorted correctly");
-                                    0
-                                }
-                            }
-                        };
-
-                        let code_b = {
-                            match code_regex.captures(b) {
-                                Some(code) => code[1].parse::<u64>().unwrap_or_else(|err| {
-                                    eprintln!("Sorting error: {err}: Rust output may not be sorted correctly");
-                                    0
-                                }),
-                                None => {
-                                    eprintln!("Sorting error: Rust output may not be sorted correctly");
-                                    0
-                                }
-                            }
-                        };
-
-                        code_a.cmp(&code_b)
-                    });
+                    .collect::<Vec<_>>();
                 let enum_content = format!(
                     r#"pub enum Enum{} {{{}}}"#,
                     name.to_case(Case::Pascal),
@@ -642,8 +612,6 @@ fn uses_uuid(ty: &Type) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use regex::Regex;
-
     use super::*;
     use crate::definitions::{EndpointSchemaElement, RustGenConfig};
     use endpoint_libs::model::{EndpointSchema, Field};
@@ -740,35 +708,28 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_number_from_error_code() {
-        let re = Regex::new(r"=\s*(\d+)").unwrap();
+    fn enum_decl_sorts_by_signed_discriminant() {
+        let e = Type::enum_(
+            "sample",
+            vec![
+                EnumVariant::new_with_description("High", "default = 0", 10),
+                EnumVariant::new("Near", -1),
+                EnumVariant::new("Low", 2),
+                EnumVariant::new("Far", -9),
+                EnumVariant::new("Tie", 2),
+            ],
+        );
+        let decl = e.to_rust_decl(false, false);
+        let declarations = decl
+            .lines()
+            .filter(|line| line.contains(" = ") && !line.trim_start().starts_with('#'))
+            .map(str::trim)
+            .collect::<Vec<_>>();
 
-        // Test with newline between number and comma
-        let text1 = r#"    ///
-      LoginStep2 = 10003
-  ,"#;
-        let caps1 = re.captures(text1).expect("Should match");
-        let number1: u64 = caps1[1].parse().expect("Should parse as u64");
-        assert_eq!(number1, 10003);
-
-        // Test with spaces but no newline
-        let text2 = "Authorize = 10000,";
-        let caps2 = re.captures(text2).expect("Should match");
-        let number2: u64 = caps2[1].parse().expect("Should parse as u64");
-        assert_eq!(number2, 10000);
-
-        // Test with no spaces
-        let text3 = "SomeError=12345,";
-        let caps3 = re.captures(text3).expect("Should match");
-        let number3: u64 = caps3[1].parse().expect("Should parse as u64");
-        assert_eq!(number3, 12345);
-
-        // Test with multiple spaces
-        let text4 = r#"/// SQL R0019 UnauthorizedMessage
-    UnauthorizedMessage = 45349677
-, "#;
-        let caps4 = re.captures(text4).expect("Should match");
-        let number4: u64 = caps4[1].parse().expect("Should parse as u64");
-        assert_eq!(number4, 45349677);
+        assert_eq!(
+            declarations,
+            ["Far = -9", "Near = -1", "Low = 2", "Tie = 2", "High = 10"]
+        );
+        assert!(decl.contains("#[doc = \"default = 0\"]"));
     }
 }
