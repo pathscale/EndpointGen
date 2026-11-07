@@ -627,7 +627,22 @@ mod tests {
             ],
         );
         let decl = e.to_rust_decl(false, false);
-        assert!(decl.contains("/// Has docs."));
+        let lines = decl.lines().map(str::trim).collect::<Vec<_>>();
+        assert!(
+            lines.windows(2).any(|pair| {
+                pair[0] == r#"#[doc = "Has docs."]"# && pair[1] == "Documented = 0"
+            }),
+            "documented variant should have its doc attribute immediately before it:\n{decl}"
+        );
+        let doc_attributes = lines
+            .iter()
+            .filter(|line| line.starts_with("#[doc ="))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            doc_attributes.len(),
+            1,
+            "only the documented variant should have a doc attribute:\n{decl}"
+        );
         assert!(
             !decl.lines().any(|l| l.trim() == "///"),
             "empty doc comment emitted (clippy::empty_docs):\n{decl}"
