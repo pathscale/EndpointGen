@@ -438,7 +438,7 @@ impl WsResponse for {end_name2}Response {{
 
 /// Resolves the IDs of roles from a list of role names and a list of enum types.
 /// endpoint_roles: vec!["Role1::Value1", "Role1::Value2"]
-fn resolve_roles_ids(endpoint_roles: &Vec<String>, all_enums: &Vec<EnumElement>) -> eyre::Result<Vec<i64>> {
+fn resolve_roles_ids(endpoint_roles: &Vec<String>, all_enums: &Vec<EnumElement>) -> eyre::Result<Vec<u32>> {
     let mut all_enums_typed: HashMap<String, Vec<EnumVariant>> = HashMap::new();
     for e in all_enums {
         if let Type::Enum { name: _, variants } = &e.inner {
@@ -452,7 +452,13 @@ fn resolve_roles_ids(endpoint_roles: &Vec<String>, all_enums: &Vec<EnumElement>)
 
         if let Some(role_enum_variants) = all_enums_typed.get(role_enum_name) {
             if let Some(role_variant_in_endpoint) = role_enum_variants.iter().find(|v| v.name == role_variant_name) {
-                roles_ids.push(role_variant_in_endpoint.value);
+                let value = role_variant_in_endpoint.value;
+                let id = u32::try_from(value).map_err(|_| {
+                    eyre::eyre!(
+                        "Role reference '{role}' has discriminant {value} outside the supported u32 range (0..=4294967295)"
+                    )
+                })?;
+                roles_ids.push(id);
             } else {
                 bail!("Role variant '{role_variant_name}' not found in enum '{role_enum_name}'");
             }
@@ -461,7 +467,7 @@ fn resolve_roles_ids(endpoint_roles: &Vec<String>, all_enums: &Vec<EnumElement>)
         }
     }
     // Reject duplicate role IDs instead of silently deduplicating them.
-    let mut roles_ids_set: BTreeSet<i64> = BTreeSet::new();
+    let mut roles_ids_set: BTreeSet<u32> = BTreeSet::new();
     for id in &roles_ids {
         if !roles_ids_set.insert(*id) {
             bail!("Duplicate role ID found: {id}");
@@ -693,6 +699,100 @@ mod tests {
             }],
             error_codes: vec![],
         }
+    }
+
+    fn role_enum(variants: Vec<EnumVariant>) -> EnumElement {
+        EnumElement {
+            config: RustGenConfig {
+                prefix_enum: true,
+                ..RustGenConfig::default()
+            },
+            inner: Type::enum_("role", variants),
+        }
+    }
+
+    #[test]
+    fn resolve_roles_ids_checks_range_sorts_and_allows_empty_selection() {
+        let enums = vec![role_enum(vec![
+            EnumVariant::new("Maximum", 4_294_967_295),
+            EnumVariant::new("Zero", 0),
+            EnumVariant::new("Seven", 7),
+            EnumVariant::new("UnusedNegative", -1),
+        ])];
+
+        let ids = resolve_roles_ids(
+            &vec![
+                "EnumRole::Maximum".to_string(),
+                "EnumRole::Zero".to_string(),
+                "EnumRole::Seven".to_string(),
+            ],
+            &enums,
+        )
+        .unwrap();
+        assert_eq!(ids, vec![0_u32, 7, u32::MAX]);
+        assert_eq!(
+            resolve_roles_ids(&vec![], &enums).unwrap(),
+            Vec::<u32>::new()
+        );
+    }
+
+    #[test]
+    fn resolve_roles_ids_rejects_out_of_range_referenced_values() {
+        for (role, value) in [
+            ("EnumRole::Negative", -1),
+            ("EnumRole::TooLarge", 4_294_967_296),
+        ] {
+            let enums = vec![role_enum(vec![EnumVariant::new(
+                role.split_once("::").unwrap().1,
+                value,
+            )])];
+            let error = resolve_roles_ids(&vec![role.to_string()], &enums).unwrap_err();
+            let message = error.to_string();
+            assert!(
+                message.contains(role),
+                "missing role reference in: {message}"
+            );
+            assert!(
+                message.contains(&value.to_string()),
+                "missing value in: {message}"
+            );
+        }
+    }
+
+    #[test]
+    fn resolve_roles_ids_rejects_duplicate_resolved_ids() {
+        let enums = vec![role_enum(vec![
+            EnumVariant::new("First", 7),
+            EnumVariant::new("AlsoFirst", 7),
+        ])];
+        for roles in [
+            vec!["EnumRole::First", "EnumRole::First"],
+            vec!["EnumRole::First", "EnumRole::AlsoFirst"],
+        ] {
+            let error = resolve_roles_ids(
+                &roles.into_iter().map(str::to_string).collect(),
+                &enums,
+            )
+            .unwrap_err();
+            assert!(error.to_string().contains("Duplicate role ID"));
+        }
+    }
+
+    #[test]
+    fn resolve_roles_ids_preserves_missing_enum_and_variant_errors() {
+        let enums = vec![role_enum(vec![EnumVariant::new("Known", 1)])];
+
+        let missing_enum =
+            resolve_roles_ids(&vec!["UnknownRole::Known".to_string()], &enums).unwrap_err();
+        assert!(missing_enum
+            .to_string()
+            .contains("Role enum 'UnknownRole' not found"));
+
+        let missing_variant =
+            resolve_roles_ids(&vec!["EnumRole::Unknown".to_string()], &enums).unwrap_err();
+        assert!(missing_variant
+            .to_string()
+            .contains("Role variant 'Unknown' not found in enum 'EnumRole'"));
     }
 
     #[test]
