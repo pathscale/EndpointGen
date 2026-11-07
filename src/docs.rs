@@ -376,8 +376,13 @@ pub fn gen_mcp_tools_json(data: &Data) -> eyre::Result<()> {
     Ok(())
 }
 
+/// Writes systemd units under `etc/systemd/`.
+///
+/// The application name, service names, and username must be nonempty and
+/// contain only ASCII letters, digits, underscores, or hyphens.
 pub fn gen_systemd_services(data: &Data, app_name: &str, user: &str) -> eyre::Result<()> {
     validate_output_component(app_name, "application name")?;
+    validate_output_component(user, "systemd user")?;
     validate_service_names(&data.services)?;
     create_dir_all(data.project_root.join("etc").join("systemd"))?;
 
@@ -540,6 +545,36 @@ mod tests {
     use super::*;
     use crate::definitions::{EndpointSchemaElement, RustGenConfig};
     use endpoint_libs::model::{EnumVariant, Field};
+
+    #[test]
+    fn systemd_generator_rejects_invalid_user_before_writing() {
+        let dir = tempfile::tempdir().unwrap();
+        let data = Data {
+            project_name: "app".into(),
+            project_root: dir.path().to_path_buf(),
+            output_dir: dir.path().to_path_buf(),
+            services: vec![GenService::new("api".into(), 1, vec![])],
+            enums: vec![],
+            structs: vec![],
+            error_codes: vec![],
+        };
+        let invalid_user = "app-user\nextra";
+        let unit = dir.path().join("etc/systemd/app_api.service");
+
+        assert!(gen_systemd_services(&data, "app", invalid_user).is_err());
+        assert!(!dir.path().join("etc").exists());
+
+        gen_systemd_services(&data, "app", "app-user").unwrap();
+        let original = std::fs::read_to_string(&unit).unwrap();
+        assert!(
+            original
+                .lines()
+                .any(|line| line == "WorkingDirectory=/home/app-user/app")
+        );
+
+        assert!(gen_systemd_services(&data, "app", invalid_user).is_err());
+        assert_eq!(std::fs::read_to_string(&unit).unwrap(), original);
+    }
 
     #[test]
     fn services_json_stays_frontend_only_and_services_all_json_includes_every_endpoint() {

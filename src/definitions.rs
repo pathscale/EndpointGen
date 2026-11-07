@@ -301,11 +301,7 @@ impl ToRust for StructElement {
         });
         let input = format!("pub struct {} {{{}}}", name, fields.join(","));
 
-        if add_derives {
-            self.add_derives(input)
-        } else {
-            input
-        }
+        if add_derives { self.add_derives(input) } else { input }
     }
 
     fn add_derives(&self, input: String) -> String {

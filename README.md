@@ -60,6 +60,12 @@ endpoint-gen --config-dir <path/to/config> --output-dir <path/to/project>
 | `docs/openapi.json` | `--openapi` | OpenAPI 3.1 — a projection for HTTP tooling. |
 | `docs/openapi-README.md` | with either | Explains whichever specification documents you enabled. |
 
+Library callers can use `endpoint_gen::docs::gen_systemd_services` to write
+units to `etc/systemd/<application>_<service>.service`. The application name,
+service names, and username must be nonempty and contain only ASCII letters,
+digits, underscores, or hyphens. The username supplies the home directory path
+in the unit.
+
 #### `services.json` and AsyncAPI are parallel, not sequential
 
 The specification documents were added in 2.1 and **deprecate nothing**. `services.json`
@@ -347,27 +353,18 @@ endpoint-gen, then the backends — is documented in
 
 ## Releasing
 
-Releases are managed with [`cargo-release`](https://github.com/crate-ci/cargo-release) and [`git-cliff`](https://github.com/orhun/git-cliff). Both must be installed:
+Bump the version in each selected crate's `Cargo.toml` in the reviewed change.
+Run the local checks in `AGENTS.md` and rebase-merge the reviewed change into
+`master`.
 
-```sh
-cargo install cargo-release git-cliff
-```
+Before publishing a crate, run `cargo publish --dry-run --registry crates-io`
+with `--manifest-path Cargo.toml` for `endpoint-gen` or
+`--manifest-path endpoint-gen-macros/Cargo.toml` for `endpoint-gen-macros`.
+If `endpoint-gen` needs a macros version that is absent from crates.io,
+publish the macros crate first so the `endpoint-gen` dry run can resolve it.
 
-To cut a release:
-
-```sh
-./scripts/release.sh [--skip-bump] <patch|minor|major>
-```
-
-The script will:
-1. Run `cargo release --execute <level>` — bumps the version in `Cargo.toml`, updates the deps.rs badge in this README, regenerates `CHANGELOG.md`, and commits everything as `chore(release): vX.Y.Z`.
-2. Open your `$EDITOR` with the auto-generated tag notes (from `git-cliff`) for review.
-3. Create an annotated tag using the edited notes as the tag body (shown as GitHub Release notes).
-4. Push the commit and tag.
-5. Prompt whether to publish to crates.io.
-
-To preview what `cargo-release` would do without making changes:
-
-```sh
-cargo release patch  # omit --execute for a dry run
-```
+Manually dispatch the [Publish workflow](.github/workflows/publish.yml) from
+`master` and select `endpoint-gen`, `endpoint-gen-macros`, or `both`. The
+workflow publishes the macros crate first when both are selected. It uses
+the repository's `CARGO_REGISTRY_TOKEN` secret and reads each release version
+from its manifest.

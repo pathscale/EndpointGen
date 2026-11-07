@@ -102,11 +102,7 @@ impl ToRust for Type {
                 });
                 let input = format!("pub struct {} {{{}}}", name, fields.join(","));
 
-                if add_derives {
-                    self.add_derives(input)
-                } else {
-                    input
-                }
+                if add_derives { self.add_derives(input) } else { input }
             }
             Type::Enum { name, variants: fields } => {
                 let fields = fields
@@ -292,7 +288,10 @@ impl PreparedModel<'_> {
 
 /// Validate role references before opening any generated artifact.
 pub fn prepare_model(data: &Data) -> eyre::Result<PreparedModel<'_>> {
-    Ok(PreparedModel { data, resolved_roles: resolve_all_roles(data)? })
+    Ok(PreparedModel {
+        data,
+        resolved_roles: resolve_all_roles(data)?,
+    })
 }
 
 fn resolve_all_roles(data: &Data) -> eyre::Result<Vec<Vec<u32>>> {
@@ -304,10 +303,7 @@ fn resolve_all_roles(data: &Data) -> eyre::Result<Vec<Vec<u32>>> {
 }
 
 /// Emits the model after callers have completed role validation.
-fn gen_model_rs_with_resolved_roles(
-    data: &Data,
-    resolved_roles: &[Vec<u32>],
-) -> eyre::Result<()> {
+fn gen_model_rs_with_resolved_roles(data: &Data, resolved_roles: &[Vec<u32>]) -> eyre::Result<()> {
     let db_filename = data.output_dir.join("model.rs");
 
     // Ensure the parent directories exist
@@ -439,10 +435,7 @@ impl From<EnumErrorCode> for ErrorCode {{
     let mut roles_index = 0;
     for s in &data.services {
         for endpoint in &s.endpoints {
-            let roles_list = resolved_roles[roles_index]
-                .iter()
-                .map(|x| x.to_string())
-                .join(", ");
+            let roles_list = resolved_roles[roles_index].iter().map(|x| x.to_string()).join(", ");
             roles_index += 1;
 
             write!(
@@ -776,32 +769,20 @@ mod tests {
         )
         .unwrap();
         assert_eq!(ids, vec![0_u32, 7, u32::MAX]);
-        assert_eq!(
-            resolve_roles_ids(&[], &enums).unwrap(),
-            Vec::<u32>::new()
-        );
+        assert_eq!(resolve_roles_ids(&[], &enums).unwrap(), Vec::<u32>::new());
     }
 
     #[test]
     fn resolve_roles_ids_rejects_out_of_range_referenced_values() {
-        for (role, value) in [
-            ("EnumRole::Negative", -1),
-            ("EnumRole::TooLarge", 4_294_967_296),
-        ] {
+        for (role, value) in [("EnumRole::Negative", -1), ("EnumRole::TooLarge", 4_294_967_296)] {
             let enums = vec![role_enum(vec![EnumVariant::new(
                 role.split_once("::").unwrap().1,
                 value,
             )])];
             let error = resolve_roles_ids(&[role.to_string()], &enums).unwrap_err();
             let message = error.to_string();
-            assert!(
-                message.contains(role),
-                "missing role reference in: {message}"
-            );
-            assert!(
-                message.contains(&value.to_string()),
-                "missing value in: {message}"
-            );
+            assert!(message.contains(role), "missing role reference in: {message}");
+            assert!(message.contains(&value.to_string()), "missing value in: {message}");
         }
     }
 
@@ -815,11 +796,8 @@ mod tests {
             vec!["EnumRole::First", "EnumRole::First"],
             vec!["EnumRole::First", "EnumRole::AlsoFirst"],
         ] {
-            let error = resolve_roles_ids(
-                &roles.into_iter().map(str::to_string).collect::<Vec<_>>(),
-                &enums,
-            )
-            .unwrap_err();
+            let error =
+                resolve_roles_ids(&roles.into_iter().map(str::to_string).collect::<Vec<_>>(), &enums).unwrap_err();
             assert!(error.to_string().contains("Duplicate role ID"));
         }
     }
@@ -828,17 +806,15 @@ mod tests {
     fn resolve_roles_ids_preserves_missing_enum_and_variant_errors() {
         let enums = vec![role_enum(vec![EnumVariant::new("Known", 1)])];
 
-        let missing_enum =
-            resolve_roles_ids(&["UnknownRole::Known".to_string()], &enums).unwrap_err();
-        assert!(missing_enum
-            .to_string()
-            .contains("Role enum 'UnknownRole' not found"));
+        let missing_enum = resolve_roles_ids(&["UnknownRole::Known".to_string()], &enums).unwrap_err();
+        assert!(missing_enum.to_string().contains("Role enum 'UnknownRole' not found"));
 
-        let missing_variant =
-            resolve_roles_ids(&["EnumRole::Unknown".to_string()], &enums).unwrap_err();
-        assert!(missing_variant
-            .to_string()
-            .contains("Role variant 'Unknown' not found in enum 'EnumRole'"));
+        let missing_variant = resolve_roles_ids(&["EnumRole::Unknown".to_string()], &enums).unwrap_err();
+        assert!(
+            missing_variant
+                .to_string()
+                .contains("Role variant 'Unknown' not found in enum 'EnumRole'")
+        );
     }
 
     #[test]
@@ -847,17 +823,23 @@ mod tests {
             role_enum(vec![EnumVariant::new("Known", 1)]),
             role_enum(vec![EnumVariant::new("Known", 2)]),
         ];
-        let enum_error = resolve_roles_ids(&["EnumRole::Known".to_string()], &duplicated_enums)
-            .unwrap_err();
-        assert!(enum_error.to_string().contains("enum reference 'EnumRole' is ambiguous"));
+        let enum_error = resolve_roles_ids(&["EnumRole::Known".to_string()], &duplicated_enums).unwrap_err();
+        assert!(
+            enum_error
+                .to_string()
+                .contains("enum reference 'EnumRole' is ambiguous")
+        );
 
         let duplicated_variants = vec![role_enum(vec![
             EnumVariant::new("Known", 1),
             EnumVariant::new("Known", 2),
         ])];
-        let variant_error = resolve_roles_ids(&["EnumRole::Known".to_string()], &duplicated_variants)
-            .unwrap_err();
-        assert!(variant_error.to_string().contains("variant reference 'Known' is ambiguous"));
+        let variant_error = resolve_roles_ids(&["EnumRole::Known".to_string()], &duplicated_variants).unwrap_err();
+        assert!(
+            variant_error
+                .to_string()
+                .contains("variant reference 'Known' is ambiguous")
+        );
     }
 
     #[test]
@@ -951,12 +933,16 @@ mod tests {
         let generated = String::from_utf8(output).unwrap();
         let lines = generated.lines().map(str::trim).collect::<Vec<_>>();
         let expected = format!("#[doc = {:?}]", message);
-        assert!(lines
-            .windows(2)
-            .any(|pair| pair[0] == expected && pair[1] == "MultiLine,"));
-        assert!(lines
-            .windows(2)
-            .any(|pair| { pair[0] == expected && pair[1] == "WithFields { detail_code: String }," }));
+        assert!(
+            lines
+                .windows(2)
+                .any(|pair| pair[0] == expected && pair[1] == "MultiLine,")
+        );
+        assert!(
+            lines
+                .windows(2)
+                .any(|pair| { pair[0] == expected && pair[1] == "WithFields { detail_code: String }," })
+        );
         assert!(
             !lines
                 .iter()
