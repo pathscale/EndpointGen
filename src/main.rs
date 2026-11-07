@@ -158,6 +158,7 @@ impl SpecOptions {
 /// scratch directory. If these ever diverge, `--check` starts lying.
 fn run_generation(data: &Data, specs: SpecOptions) -> Result<()> {
     docs::validate_service_names(&data.services)?;
+    let prepared_model = rust::prepare_model(data)?;
     let docs_data = format_for_docs(data);
 
     docs::gen_services_docs(&docs_data)?;
@@ -175,7 +176,7 @@ fn run_generation(data: &Data, specs: SpecOptions) -> Result<()> {
     if specs.any() {
         docs::gen_spec_readme(&data.project_root, specs.openapi, specs.asyncapi)?;
     }
-    rust::gen_model_rs(data)?;
+    prepared_model.write()?;
     docs::gen_error_message_md(&data.project_root, &data.error_codes)?;
     Ok(())
 }
@@ -676,6 +677,52 @@ mod tests {
 
     use endpoint_gen::definitions::EndpointSchemaListDefinition;
     use endpoint_libs::model::EnumVariant;
+
+    #[test]
+    fn run_generation_rejects_roles_before_changing_docs_or_model() {
+        let temp = tempfile::tempdir().unwrap();
+        let project_root = temp.path().join("project");
+        let output_dir = project_root.join("generated");
+        fs::create_dir_all(project_root.join("docs")).unwrap();
+        fs::create_dir_all(&output_dir).unwrap();
+        let docs_file = project_root.join("docs/services.json");
+        let model_file = output_dir.join("model.rs");
+        fs::write(&docs_file, "previous docs\n").unwrap();
+        fs::write(&model_file, "previous model\n").unwrap();
+        let mut schema = EndpointSchema::new("Login", 10001, vec![], vec![]);
+        schema.roles = vec!["Role::Missing".to_string()];
+        let data = Data {
+            project_name: "test".to_string(),
+            project_root,
+            output_dir,
+            services: vec![GenService::new(
+                "users".to_string(),
+                1,
+                vec![EndpointSchemaElement {
+                    frontend_facing: true,
+                    config: endpoint_gen::definitions::RustGenConfig::default(),
+                    schema,
+                }],
+            )],
+            enums: vec![],
+            structs: vec![],
+            error_codes: vec![],
+        };
+
+        let error = run_generation(
+            &data,
+            SpecOptions {
+                openapi: false,
+                asyncapi: false,
+                public_only: false,
+            },
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("Role enum 'Role' not found"));
+        assert_eq!(fs::read_to_string(docs_file).unwrap(), "previous docs\n");
+        assert_eq!(fs::read_to_string(model_file).unwrap(), "previous model\n");
+    }
 
     fn endpoint_list(descriptions: &[&str]) -> Definition {
         Definition::EndpointSchemaList(EndpointSchemaListDefinition {

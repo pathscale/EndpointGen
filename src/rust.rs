@@ -4,7 +4,7 @@ use convert_case::{Case, Casing};
 use endpoint_libs::model::{EndpointErrorSchema, EnumVariant, Type};
 use eyre::bail;
 use itertools::Itertools;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
@@ -275,6 +275,39 @@ fn gen_endpoint_error_enum(
 }
 
 pub fn gen_model_rs(data: &Data) -> eyre::Result<()> {
+    prepare_model(data)?.write()
+}
+
+/// A model whose role references have been validated against its borrowed input.
+pub struct PreparedModel<'a> {
+    data: &'a Data,
+    resolved_roles: Vec<Vec<u32>>,
+}
+
+impl PreparedModel<'_> {
+    pub fn write(self) -> eyre::Result<()> {
+        gen_model_rs_with_resolved_roles(self.data, &self.resolved_roles)
+    }
+}
+
+/// Validate role references before opening any generated artifact.
+pub fn prepare_model(data: &Data) -> eyre::Result<PreparedModel<'_>> {
+    Ok(PreparedModel { data, resolved_roles: resolve_all_roles(data)? })
+}
+
+fn resolve_all_roles(data: &Data) -> eyre::Result<Vec<Vec<u32>>> {
+    data.services
+        .iter()
+        .flat_map(|service| &service.endpoints)
+        .map(|endpoint| resolve_roles_ids(&endpoint.schema.roles, &data.enums))
+        .collect()
+}
+
+/// Emits the model after callers have completed role validation.
+fn gen_model_rs_with_resolved_roles(
+    data: &Data,
+    resolved_roles: &[Vec<u32>],
+) -> eyre::Result<()> {
     let db_filename = data.output_dir.join("model.rs");
 
     // Ensure the parent directories exist
@@ -403,12 +436,14 @@ impl From<EnumErrorCode> for ErrorCode {{
         }
     }
 
+    let mut roles_index = 0;
     for s in &data.services {
         for endpoint in &s.endpoints {
-            let roles_list = resolve_roles_ids(&endpoint.schema.roles, &data.enums)?
-                .into_iter()
+            let roles_list = resolved_roles[roles_index]
+                .iter()
                 .map(|x| x.to_string())
                 .join(", ");
+            roles_index += 1;
 
             write!(
                 &mut model_file,
@@ -425,7 +460,7 @@ impl WsResponse for {end_name2}Response {{
 ",
                 end_name2 = endpoint.schema.name.to_case(Case::Pascal),
                 code = endpoint.schema.code,
-                schema = format!("{:?}", serde_json::to_string_pretty(&endpoint.schema)?)
+                schema = format_args!("{:?}", serde_json::to_string_pretty(&endpoint.schema)?)
             )?;
         }
     }
@@ -438,20 +473,25 @@ impl WsResponse for {end_name2}Response {{
 
 /// Resolves the IDs of roles from a list of role names and a list of enum types.
 /// endpoint_roles: vec!["Role1::Value1", "Role1::Value2"]
-fn resolve_roles_ids(endpoint_roles: &Vec<String>, all_enums: &Vec<EnumElement>) -> eyre::Result<Vec<u32>> {
-    let mut all_enums_typed: HashMap<String, Vec<EnumVariant>> = HashMap::new();
-    for e in all_enums {
-        if let Type::Enum { name: _, variants } = &e.inner {
-            all_enums_typed.insert(e.to_rust_ref(false), variants.clone());
-        }
-    }
-
+fn resolve_roles_ids(endpoint_roles: &[String], all_enums: &[EnumElement]) -> eyre::Result<Vec<u32>> {
     let mut roles_ids = vec![];
     for role in endpoint_roles {
         let (role_enum_name, role_variant_name) = role.split_once("::").unwrap_or(("", role.as_str()));
 
-        if let Some(role_enum_variants) = all_enums_typed.get(role_enum_name) {
-            if let Some(role_variant_in_endpoint) = role_enum_variants.iter().find(|v| v.name == role_variant_name) {
+        let mut matching_enums = all_enums.iter().filter(|e| e.to_rust_ref(false) == role_enum_name);
+        if let Some(enum_element) = matching_enums.next() {
+            if matching_enums.next().is_some() {
+                bail!("Role enum reference '{role_enum_name}' is ambiguous");
+            }
+            let role_enum_variants = match &enum_element.inner {
+                Type::Enum { variants, .. } => variants,
+                _ => unreachable!("EnumElement validation ensures enum types"),
+            };
+            let mut matching_variants = role_enum_variants.iter().filter(|v| v.name == role_variant_name);
+            if let Some(role_variant_in_endpoint) = matching_variants.next() {
+                if matching_variants.next().is_some() {
+                    bail!("Role variant reference '{role_variant_name}' is ambiguous in enum '{role_enum_name}'");
+                }
                 let value = role_variant_in_endpoint.value;
                 let id = u32::try_from(value).map_err(|_| {
                     eyre::eyre!(
@@ -727,7 +767,7 @@ mod tests {
         ])];
 
         let ids = resolve_roles_ids(
-            &vec![
+            &[
                 "EnumRole::Maximum".to_string(),
                 "EnumRole::Zero".to_string(),
                 "EnumRole::Seven".to_string(),
@@ -737,7 +777,7 @@ mod tests {
         .unwrap();
         assert_eq!(ids, vec![0_u32, 7, u32::MAX]);
         assert_eq!(
-            resolve_roles_ids(&vec![], &enums).unwrap(),
+            resolve_roles_ids(&[], &enums).unwrap(),
             Vec::<u32>::new()
         );
     }
@@ -752,7 +792,7 @@ mod tests {
                 role.split_once("::").unwrap().1,
                 value,
             )])];
-            let error = resolve_roles_ids(&vec![role.to_string()], &enums).unwrap_err();
+            let error = resolve_roles_ids(&[role.to_string()], &enums).unwrap_err();
             let message = error.to_string();
             assert!(
                 message.contains(role),
@@ -776,7 +816,7 @@ mod tests {
             vec!["EnumRole::First", "EnumRole::AlsoFirst"],
         ] {
             let error = resolve_roles_ids(
-                &roles.into_iter().map(str::to_string).collect(),
+                &roles.into_iter().map(str::to_string).collect::<Vec<_>>(),
                 &enums,
             )
             .unwrap_err();
@@ -789,16 +829,51 @@ mod tests {
         let enums = vec![role_enum(vec![EnumVariant::new("Known", 1)])];
 
         let missing_enum =
-            resolve_roles_ids(&vec!["UnknownRole::Known".to_string()], &enums).unwrap_err();
+            resolve_roles_ids(&["UnknownRole::Known".to_string()], &enums).unwrap_err();
         assert!(missing_enum
             .to_string()
             .contains("Role enum 'UnknownRole' not found"));
 
         let missing_variant =
-            resolve_roles_ids(&vec!["EnumRole::Unknown".to_string()], &enums).unwrap_err();
+            resolve_roles_ids(&["EnumRole::Unknown".to_string()], &enums).unwrap_err();
         assert!(missing_variant
             .to_string()
             .contains("Role variant 'Unknown' not found in enum 'EnumRole'"));
+    }
+
+    #[test]
+    fn resolve_roles_ids_rejects_ambiguous_enum_and_variant_names() {
+        let duplicated_enums = vec![
+            role_enum(vec![EnumVariant::new("Known", 1)]),
+            role_enum(vec![EnumVariant::new("Known", 2)]),
+        ];
+        let enum_error = resolve_roles_ids(&["EnumRole::Known".to_string()], &duplicated_enums)
+            .unwrap_err();
+        assert!(enum_error.to_string().contains("enum reference 'EnumRole' is ambiguous"));
+
+        let duplicated_variants = vec![role_enum(vec![
+            EnumVariant::new("Known", 1),
+            EnumVariant::new("Known", 2),
+        ])];
+        let variant_error = resolve_roles_ids(&["EnumRole::Known".to_string()], &duplicated_variants)
+            .unwrap_err();
+        assert!(variant_error.to_string().contains("variant reference 'Known' is ambiguous"));
+    }
+
+    #[test]
+    fn gen_model_rejects_invalid_roles_before_replacing_existing_output() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut data = test_data();
+        data.output_dir = temp.path().to_path_buf();
+        let role_enum_name = data.enums[0].to_rust_ref(false);
+        data.services[0].endpoints[0].schema.roles = vec![format!("{role_enum_name}::Missing")];
+        let model = data.output_dir.join("model.rs");
+        std::fs::write(&model, "previous model\n").unwrap();
+
+        let error = gen_model_rs(&data).unwrap_err();
+
+        assert!(error.to_string().contains("Role variant 'Missing' not found"));
+        assert_eq!(std::fs::read_to_string(model).unwrap(), "previous model\n");
     }
 
     #[test]
