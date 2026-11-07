@@ -179,6 +179,8 @@ Config(
 )
 ```
 
+Referenced role discriminants must fit `u32` (0 through 4294967295), and duplicate resolved role IDs are rejected.
+
 Endpoints with push/subscription behaviour set `stream_response` to the type streamed back to the client:
 
 ```ron
