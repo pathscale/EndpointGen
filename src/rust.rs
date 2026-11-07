@@ -201,7 +201,7 @@ fn endpoint_error_code_expr(error: &EndpointErrorSchema) -> String {
 }
 
 fn rust_string_literal(value: &str) -> String {
-    serde_json::to_string(value).expect("string serialization should not fail")
+    format!("{:?}", value)
 }
 
 fn gen_endpoint_error_enum(
@@ -625,6 +625,12 @@ mod tests {
     use super::*;
     use crate::definitions::{EndpointSchemaElement, RustGenConfig};
     use endpoint_libs::model::{EndpointSchema, Field};
+
+    #[test]
+    fn string_literals_use_rust_control_character_escapes() {
+        assert_eq!(rust_string_literal("\u{1}\u{8}"), r#""\u{1}\u{8}""#);
+        assert_eq!(rust_string_literal("quote\"\\\n"), r#""quote\"\\\n""#);
+    }
 
     #[test]
     fn enum_decl_omits_doc_comment_for_blank_descriptions() {
