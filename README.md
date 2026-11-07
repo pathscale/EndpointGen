@@ -243,6 +243,10 @@ errors: [
 ### Enums
 
 Generated enum variants are ordered by their signed discriminant values.
+Nonblank variant descriptions are emitted as escaped Rust documentation attributes, so
+newlines, quotes, and backslashes remain part of the description. Blank or whitespace-only
+descriptions are omitted. Endpoint-error messages follow the same rule for generated variant
+documentation; their original message values remain available to error conversion.
 
 Define enums with `EnumList`:
 

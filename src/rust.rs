@@ -102,7 +102,11 @@ impl ToRust for Type {
                 });
                 let input = format!("pub struct {} {{{}}}", name, fields.join(","));
 
-                if add_derives { self.add_derives(input) } else { input }
+                if add_derives {
+                    self.add_derives(input)
+                } else {
+                    input
+                }
             }
             Type::Enum { name, variants: fields } => {
                 let fields = fields
@@ -217,8 +221,8 @@ fn gen_endpoint_error_enum(
 
     for error in errors {
         let variant_name = endpoint_error_variant_name(error);
-        if !error.message.is_empty() {
-            writeln!(writer, "    /// {}", error.message)?;
+        if !error.message.trim().is_empty() {
+            writeln!(writer, "    #[doc = {:?}]", error.message)?;
         }
         if error.fields.is_empty() {
             writeln!(writer, "    {variant_name},")?;
@@ -629,9 +633,9 @@ mod tests {
         let decl = e.to_rust_decl(false, false);
         let lines = decl.lines().map(str::trim).collect::<Vec<_>>();
         assert!(
-            lines.windows(2).any(|pair| {
-                pair[0] == r#"#[doc = "Has docs."]"# && pair[1] == "Documented = 0"
-            }),
+            lines
+                .windows(2)
+                .any(|pair| { pair[0] == r#"#[doc = "Has docs."]"# && pair[1] == "Documented = 0" }),
             "documented variant should have its doc attribute immediately before it:\n{decl}"
         );
         let doc_attributes = lines
@@ -746,5 +750,43 @@ mod tests {
             ["Far = -9", "Near = -1", "Low = 2", "Tie = 2", "High = 10"]
         );
         assert!(decl.contains("#[doc = \"default = 0\"]"));
+    }
+
+    #[test]
+    fn endpoint_error_docs_escape_text_and_omit_blank_messages() {
+        use endpoint_libs::model::{EndpointErrorCodeRef, EndpointErrorSchema};
+
+        let message = "first line\nsecond \"quoted\" \\ path NAKED_ERROR_TOKEN";
+        let errors = vec![
+            EndpointErrorSchema::new("MultiLine", EndpointErrorCodeRef::new("BadRequest")).with_message(message),
+            EndpointErrorSchema::new("WithFields", EndpointErrorCodeRef::new("BadRequest"))
+                .with_message(message)
+                .with_fields(vec![Field::new("detail_code", Type::String)]),
+            EndpointErrorSchema::new("Empty", EndpointErrorCodeRef::new("BadRequest")).with_message(""),
+            EndpointErrorSchema::new("Whitespace", EndpointErrorCodeRef::new("BadRequest")).with_message(" \t\n "),
+        ];
+        let mut output = Vec::new();
+        gen_endpoint_error_enum("UserLogin", &errors, &mut output).unwrap();
+        let generated = String::from_utf8(output).unwrap();
+        let lines = generated.lines().map(str::trim).collect::<Vec<_>>();
+        let expected = format!("#[doc = {:?}]", message);
+        assert!(lines
+            .windows(2)
+            .any(|pair| pair[0] == expected && pair[1] == "MultiLine,"));
+        assert!(lines
+            .windows(2)
+            .any(|pair| { pair[0] == expected && pair[1] == "WithFields { detail_code: String }," }));
+        assert!(
+            !lines
+                .iter()
+                .any(|line| line.starts_with("second \"quoted\" \\ path NAKED_ERROR_TOKEN")),
+            "second-line error text escaped its attribute:\n{generated}"
+        );
+        assert_eq!(lines.iter().filter(|line| line.starts_with("#[doc =")).count(), 2);
+        assert!(generated.contains("with_message(\"first line\\nsecond \\\"quoted\\\" \\\\ path NAKED_ERROR_TOKEN\")"));
+        assert!(generated.contains("with_message(\" \\t\\n \")"));
+        assert!(generated.contains("EnumErrorCode::BadRequest"));
+        assert!(generated.contains("with_kind(\"MultiLine\")"));
+        assert!(generated.contains("with_details(serde_json::json!({ \"detailCode\": detail_code }))"));
     }
 }

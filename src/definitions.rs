@@ -141,8 +141,8 @@ impl ToRust for EnumElement {
                         } else {
                             x.name.clone()
                         };
-                        // A blank description must omit the `///` line entirely: an
-                        // empty doc comment trips clippy::empty_docs downstream.
+                        // A blank description must omit the doc attribute entirely:
+                        // an empty doc comment trips clippy::empty_docs downstream.
                         if x.description.trim().is_empty() {
                             format!(
                                 r#"
@@ -153,7 +153,7 @@ impl ToRust for EnumElement {
                         } else {
                             format!(
                                 r#"
-    /// {}
+    #[doc = {:?}]
     {} = {}
 "#,
                                 x.description, variant_name, x.value
@@ -301,7 +301,11 @@ impl ToRust for StructElement {
         });
         let input = format!("pub struct {} {{{}}}", name, fields.join(","));
 
-        if add_derives { self.add_derives(input) } else { input }
+        if add_derives {
+            self.add_derives(input)
+        } else {
+            input
+        }
     }
 
     fn add_derives(&self, input: String) -> String {
@@ -452,13 +456,47 @@ mod tests {
             ),
         };
         let decl = element.to_rust_decl(false, false);
-        assert!(decl.contains("/// Has docs."));
+        assert!(decl.contains(r##"#[doc = "Has docs."]"##));
+        assert!(!decl.contains("///"));
+        assert_eq!(
+            decl.lines()
+                .filter(|line| line.trim_start().starts_with("#[doc ="))
+                .count(),
+            1
+        );
         assert!(
             !decl.lines().any(|l| l.trim() == "///"),
             "empty doc comment emitted (clippy::empty_docs):\n{decl}"
         );
         assert!(decl.contains("Bare = 1"));
         assert!(decl.contains("Blank = 2"));
+    }
+
+    #[test]
+    fn enum_element_decl_escapes_multiline_descriptions() {
+        let description = "first line\nsecond \"quoted\" \\ path NAKED_VARIANT_TOKEN";
+        let element = EnumElement {
+            config: RustGenConfig::default(),
+            inner: Type::enum_(
+                "sample",
+                vec![EnumVariant::new_with_description("Documented", description, 0)],
+            ),
+        };
+        let decl = element.to_rust_decl(false, false);
+        let lines = decl.lines().map(str::trim).collect::<Vec<_>>();
+        let expected = format!("#[doc = {:?}]", description);
+        assert!(
+            lines
+                .windows(2)
+                .any(|pair| pair[0] == expected && pair[1] == "Documented = 0"),
+            "escaped docs should immediately precede the variant:\n{decl}"
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|line| line.starts_with("second \"quoted\" \\ path NAKED_VARIANT_TOKEN")),
+            "second-line description text escaped its attribute:\n{decl}"
+        );
     }
 
     #[test]
@@ -482,7 +520,7 @@ mod tests {
         let decl = element.to_rust_decl(false, false);
         let declarations = decl
             .lines()
-            .filter(|line| line.contains(" = ") && !line.trim_start().starts_with("//"))
+            .filter(|line| line.contains(" = ") && !line.trim_start().starts_with('#'))
             .map(str::trim)
             .collect::<Vec<_>>();
 
@@ -491,6 +529,6 @@ mod tests {
             declarations,
             ["Far = -9", "Near = -1", "Low = 2", "Tie = 2", "High = 10"]
         );
-        assert!(decl.contains("/// default = 0"));
+        assert!(decl.contains(r##"#[doc = "default = 0"]"##));
     }
 }
