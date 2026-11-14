@@ -30,7 +30,7 @@ natively, and Claude Code loads it through the `@AGENTS.md` import in
   and [`docs/release-order.md`](https://github.com/pathscale/endpoint-libs/blob/main/docs/release-order.md).
 
 - **Keep `cargo fmt` and `cargo clippy --all-targets` clean.** Lint failures are part of the build here, not advisory.
-- **Publishing to crates.io is irreversible.** A version number can never be reused, and yanking does not delete. Run `cargo publish --dry-run` first, publish from the merged default branch, and tag the release.
+- **Publishing to crates.io is irreversible.** Bump each selected crate's manifest version in the reviewed change. Run `cargo publish --dry-run --registry crates-io` locally for each crate before publishing it. Rebase-merge the reviewed change and dispatch the Publish workflow from `master` when ready to release.
 - **A pre-release version (`-alpha`, `-beta`) needs an exact dependency pin.** A plain `"2.0"` requirement will not match `2.0.0-alpha.1`, so consumers must be bumped deliberately.
 - **Docs describe what is true now.** If you change behaviour, update the README and any affected doc in the same change.
 

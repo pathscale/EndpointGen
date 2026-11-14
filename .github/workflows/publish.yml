@@ -1,19 +1,24 @@
 name: Publish
 
-# House scheme, as nago-wss: a version bump on the default branch is the
-# release. No tags, no manual step. Publishing is irreversible, so the trigger
-# has to be something you cannot do by accident, and editing the version field
-# is that.
-#
-# Two crates: endpoint-gen-macros is published first, because endpoint-gen
-# depends on it by version. Each is checked and published on its own.
 on:
   workflow_dispatch:
+    inputs:
+      crate:
+        description: Crate to publish
+        required: true
+        type: choice
+        options:
+          - endpoint-gen
+          - endpoint-gen-macros
+          - both
 
 jobs:
   publish:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubicloud-standard-2
     steps:
+      - name: Require master ref
+        run: test "$GITHUB_REF" = refs/heads/master
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -31,21 +36,14 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
-      - run: cargo test --release
+      - name: Publish endpoint-gen-macros
+        if: inputs.crate == 'endpoint-gen-macros' || inputs.crate == 'both'
+        run: cargo publish --registry crates-io --manifest-path endpoint-gen-macros/Cargo.toml
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
-      # The registry is the only authority on what is already released.
-      - name: Publish each crate whose version is not on crates.io
-        run: |
-          set -eu
-          for manifest in endpoint-gen-macros/Cargo.toml Cargo.toml; do
-            name=$(cargo read-manifest --manifest-path "$manifest" | jq -er '.name')
-            version=$(cargo read-manifest --manifest-path "$manifest" | jq -er '.version')
-            if cargo info --registry crates-io "$name@$version" >/dev/null 2>&1; then
-              echo "$name $version is already on crates.io, nothing to publish"
-            else
-              echo "$name $version is not on crates.io, publishing"
-              cargo publish --manifest-path "$manifest" --token "$CARGO_REGISTRY_TOKEN"
-            fi
-          done
+      - name: Publish endpoint-gen
+        if: inputs.crate == 'endpoint-gen' || inputs.crate == 'both'
+        run: cargo publish --registry crates-io --manifest-path Cargo.toml
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

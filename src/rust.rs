@@ -4,7 +4,7 @@ use convert_case::{Case, Casing};
 use endpoint_libs::model::{EndpointErrorSchema, EnumVariant, Type};
 use eyre::bail;
 use itertools::Itertools;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
@@ -67,8 +67,6 @@ impl ToRust for Type {
     }
 
     fn to_rust_decl(&self, serde_with: bool, add_derives: bool) -> String {
-        let code_regex = regex::Regex::new(r"=\s*(\d+)").expect("Error building regex to extract endpoint code");
-
         match self {
             Type::Struct { name, fields } => {
                 let mut fields = fields.iter().map(|x| {
@@ -107,8 +105,9 @@ impl ToRust for Type {
                 if add_derives { self.add_derives(input) } else { input }
             }
             Type::Enum { name, variants: fields } => {
-                let mut fields = fields
+                let fields = fields
                     .iter()
+                    .sorted_by_key(|variant| variant.value)
                     .map(|x| {
                         let variant_name = if x.name.chars().last().unwrap().is_lowercase() {
                             x.name.to_case(Case::Pascal)
@@ -127,43 +126,14 @@ impl ToRust for Type {
                         } else {
                             format!(
                                 r#"
-    /// {}
+    #[doc = {:?}]
     {} = {}
 "#,
                                 x.description, variant_name, x.value
                             )
                         }
                     })
-                    .sorted_by(|a, b| {
-                        // Sort by the endpoint code
-                        let code_a = {
-                            match code_regex.captures(a) {
-                                Some(code) => code[1].parse::<u64>().unwrap_or_else(|err| {
-                                    eprintln!("Sorting error: {err}: Rust output may not be sorted correctly");
-                                    0
-                                }),
-                                None => {
-                                    eprintln!("Sorting error: Rust output may not be sorted correctly");
-                                    0
-                                }
-                            }
-                        };
-
-                        let code_b = {
-                            match code_regex.captures(b) {
-                                Some(code) => code[1].parse::<u64>().unwrap_or_else(|err| {
-                                    eprintln!("Sorting error: {err}: Rust output may not be sorted correctly");
-                                    0
-                                }),
-                                None => {
-                                    eprintln!("Sorting error: Rust output may not be sorted correctly");
-                                    0
-                                }
-                            }
-                        };
-
-                        code_a.cmp(&code_b)
-                    });
+                    .collect::<Vec<_>>();
                 let enum_content = format!(
                     r#"pub enum Enum{} {{{}}}"#,
                     name.to_case(Case::Pascal),
@@ -227,7 +197,7 @@ fn endpoint_error_code_expr(error: &EndpointErrorSchema) -> String {
 }
 
 fn rust_string_literal(value: &str) -> String {
-    serde_json::to_string(value).expect("string serialization should not fail")
+    format!("{:?}", value)
 }
 
 fn gen_endpoint_error_enum(
@@ -247,8 +217,8 @@ fn gen_endpoint_error_enum(
 
     for error in errors {
         let variant_name = endpoint_error_variant_name(error);
-        if !error.message.is_empty() {
-            writeln!(writer, "    /// {}", error.message)?;
+        if !error.message.trim().is_empty() {
+            writeln!(writer, "    #[doc = {:?}]", error.message)?;
         }
         if error.fields.is_empty() {
             writeln!(writer, "    {variant_name},")?;
@@ -301,6 +271,39 @@ fn gen_endpoint_error_enum(
 }
 
 pub fn gen_model_rs(data: &Data) -> eyre::Result<()> {
+    prepare_model(data)?.write()
+}
+
+/// A model whose role references have been validated against its borrowed input.
+pub struct PreparedModel<'a> {
+    data: &'a Data,
+    resolved_roles: Vec<Vec<u32>>,
+}
+
+impl PreparedModel<'_> {
+    pub fn write(self) -> eyre::Result<()> {
+        gen_model_rs_with_resolved_roles(self.data, &self.resolved_roles)
+    }
+}
+
+/// Validate role references before opening any generated artifact.
+pub fn prepare_model(data: &Data) -> eyre::Result<PreparedModel<'_>> {
+    Ok(PreparedModel {
+        data,
+        resolved_roles: resolve_all_roles(data)?,
+    })
+}
+
+fn resolve_all_roles(data: &Data) -> eyre::Result<Vec<Vec<u32>>> {
+    data.services
+        .iter()
+        .flat_map(|service| &service.endpoints)
+        .map(|endpoint| resolve_roles_ids(&endpoint.schema.roles, &data.enums))
+        .collect()
+}
+
+/// Emits the model after callers have completed role validation.
+fn gen_model_rs_with_resolved_roles(data: &Data, resolved_roles: &[Vec<u32>]) -> eyre::Result<()> {
     let db_filename = data.output_dir.join("model.rs");
 
     // Ensure the parent directories exist
@@ -429,12 +432,11 @@ impl From<EnumErrorCode> for ErrorCode {{
         }
     }
 
+    let mut roles_index = 0;
     for s in &data.services {
         for endpoint in &s.endpoints {
-            let roles_list = resolve_roles_ids(&endpoint.schema.roles, &data.enums)
-                .into_iter()
-                .map(|x| x.to_string())
-                .join(", ");
+            let roles_list = resolved_roles[roles_index].iter().map(|x| x.to_string()).join(", ");
+            roles_index += 1;
 
             write!(
                 &mut model_file,
@@ -443,7 +445,7 @@ impl WsRequest for {end_name2}Request {{
     type Response = {end_name2}Response;
     const METHOD_ID: u32 = {code};
     const ROLES: &[u32] = &[{roles_list}];
-    const SCHEMA: &'static str = r#\"{schema}\"#;
+    const SCHEMA: &'static str = {schema};
 }}
 impl WsResponse for {end_name2}Response {{
     type Request = {end_name2}Request;
@@ -451,7 +453,7 @@ impl WsResponse for {end_name2}Response {{
 ",
                 end_name2 = endpoint.schema.name.to_case(Case::Pascal),
                 code = endpoint.schema.code,
-                schema = serde_json::to_string_pretty(&endpoint.schema).unwrap()
+                schema = format_args!("{:?}", serde_json::to_string_pretty(&endpoint.schema)?)
             )?;
         }
     }
@@ -464,37 +466,48 @@ impl WsResponse for {end_name2}Response {{
 
 /// Resolves the IDs of roles from a list of role names and a list of enum types.
 /// endpoint_roles: vec!["Role1::Value1", "Role1::Value2"]
-fn resolve_roles_ids(endpoint_roles: &Vec<String>, all_enums: &Vec<EnumElement>) -> Vec<i64> {
-    let mut all_enums_typed: HashMap<String, Vec<EnumVariant>> = HashMap::new();
-    for e in all_enums {
-        if let Type::Enum { name: _, variants } = &e.inner {
-            all_enums_typed.insert(e.to_rust_ref(false), variants.clone());
-        }
-    }
-
+fn resolve_roles_ids(endpoint_roles: &[String], all_enums: &[EnumElement]) -> eyre::Result<Vec<u32>> {
     let mut roles_ids = vec![];
     for role in endpoint_roles {
         let (role_enum_name, role_variant_name) = role.split_once("::").unwrap_or(("", role.as_str()));
 
-        if let Some(role_enum_variants) = all_enums_typed.get(role_enum_name) {
-            if let Some(role_variant_in_endpoint) = role_enum_variants.iter().find(|v| v.name == role_variant_name) {
-                roles_ids.push(role_variant_in_endpoint.value);
+        let mut matching_enums = all_enums.iter().filter(|e| e.to_rust_ref(false) == role_enum_name);
+        if let Some(enum_element) = matching_enums.next() {
+            if matching_enums.next().is_some() {
+                bail!("Role enum reference '{role_enum_name}' is ambiguous");
+            }
+            let role_enum_variants = match &enum_element.inner {
+                Type::Enum { variants, .. } => variants,
+                _ => unreachable!("EnumElement validation ensures enum types"),
+            };
+            let mut matching_variants = role_enum_variants.iter().filter(|v| v.name == role_variant_name);
+            if let Some(role_variant_in_endpoint) = matching_variants.next() {
+                if matching_variants.next().is_some() {
+                    bail!("Role variant reference '{role_variant_name}' is ambiguous in enum '{role_enum_name}'");
+                }
+                let value = role_variant_in_endpoint.value;
+                let id = u32::try_from(value).map_err(|_| {
+                    eyre::eyre!(
+                        "Role reference '{role}' has discriminant {value} outside the supported u32 range (0..=4294967295)"
+                    )
+                })?;
+                roles_ids.push(id);
             } else {
-                eprintln!("Warning: Role variant '{role_variant_name}' not found in enum '{role_enum_name}'");
+                bail!("Role variant '{role_variant_name}' not found in enum '{role_enum_name}'");
             }
         } else {
-            eprintln!("Warning: Role enum '{role_enum_name}' not found");
+            bail!("Role enum '{role_enum_name}' not found");
         }
     }
-    // check there is not duplicate roles ids and print error if there are
-    let mut roles_ids_set: BTreeSet<i64> = BTreeSet::new();
+    // Reject duplicate role IDs instead of silently deduplicating them.
+    let mut roles_ids_set: BTreeSet<u32> = BTreeSet::new();
     for id in &roles_ids {
         if !roles_ids_set.insert(*id) {
-            eprintln!("Warning: Duplicate role ID found: {id}");
+            bail!("Duplicate role ID found: {id}");
         }
     }
 
-    roles_ids_set.into_iter().collect()
+    Ok(roles_ids_set.into_iter().collect())
 }
 
 pub fn rustfmt(f: &Path) -> eyre::Result<()> {
@@ -570,11 +583,11 @@ pub fn shared_type_definitions(data: &Data) -> Vec<Type> {
 /// an `endpoint_libs::model::TypeRegistry` for `WebsocketServer::enable_mcp()`.
 pub fn dump_type_registry(data: &Data, mut writer: impl Write) -> eyre::Result<()> {
     let types = shared_type_definitions(data);
-    let serialized = serde_json::to_string_pretty(&types)?;
+    let serialized = format!("{:?}", serde_json::to_string_pretty(&types)?);
     let code = format!(
         r##"
 /// JSON-serialized shared struct/enum definitions referenced by endpoint schemas.
-pub const TYPE_DEFINITIONS: &'static str = r#"{serialized}"#;
+pub const TYPE_DEFINITIONS: &'static str = {serialized};
 
 /// Builds the type registry over all shared definitions, for use with
 /// `WebsocketServer::enable_mcp()`.
@@ -642,11 +655,15 @@ fn uses_uuid(ty: &Type) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use regex::Regex;
-
     use super::*;
     use crate::definitions::{EndpointSchemaElement, RustGenConfig};
     use endpoint_libs::model::{EndpointSchema, Field};
+
+    #[test]
+    fn string_literals_use_rust_control_character_escapes() {
+        assert_eq!(rust_string_literal("\u{1}\u{8}"), r#""\u{1}\u{8}""#);
+        assert_eq!(rust_string_literal("quote\"\\\n"), r#""quote\"\\\n""#);
+    }
 
     #[test]
     fn enum_decl_omits_doc_comment_for_blank_descriptions() {
@@ -659,7 +676,22 @@ mod tests {
             ],
         );
         let decl = e.to_rust_decl(false, false);
-        assert!(decl.contains("/// Has docs."));
+        let lines = decl.lines().map(str::trim).collect::<Vec<_>>();
+        assert!(
+            lines
+                .windows(2)
+                .any(|pair| { pair[0] == r#"#[doc = "Has docs."]"# && pair[1] == "Documented = 0" }),
+            "documented variant should have its doc attribute immediately before it:\n{decl}"
+        );
+        let doc_attributes = lines
+            .iter()
+            .filter(|line| line.starts_with("#[doc ="))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            doc_attributes.len(),
+            1,
+            "only the documented variant should have a doc attribute:\n{decl}"
+        );
         assert!(
             !decl.lines().any(|l| l.trim() == "///"),
             "empty doc comment emitted (clippy::empty_docs):\n{decl}"
@@ -708,6 +740,124 @@ mod tests {
         }
     }
 
+    fn role_enum(variants: Vec<EnumVariant>) -> EnumElement {
+        EnumElement {
+            config: RustGenConfig {
+                prefix_enum: true,
+                ..RustGenConfig::default()
+            },
+            inner: Type::enum_("role", variants),
+        }
+    }
+
+    #[test]
+    fn resolve_roles_ids_checks_range_sorts_and_allows_empty_selection() {
+        let enums = vec![role_enum(vec![
+            EnumVariant::new("Maximum", 4_294_967_295),
+            EnumVariant::new("Zero", 0),
+            EnumVariant::new("Seven", 7),
+            EnumVariant::new("UnusedNegative", -1),
+        ])];
+
+        let ids = resolve_roles_ids(
+            &[
+                "EnumRole::Maximum".to_string(),
+                "EnumRole::Zero".to_string(),
+                "EnumRole::Seven".to_string(),
+            ],
+            &enums,
+        )
+        .unwrap();
+        assert_eq!(ids, vec![0_u32, 7, u32::MAX]);
+        assert_eq!(resolve_roles_ids(&[], &enums).unwrap(), Vec::<u32>::new());
+    }
+
+    #[test]
+    fn resolve_roles_ids_rejects_out_of_range_referenced_values() {
+        for (role, value) in [("EnumRole::Negative", -1), ("EnumRole::TooLarge", 4_294_967_296)] {
+            let enums = vec![role_enum(vec![EnumVariant::new(
+                role.split_once("::").unwrap().1,
+                value,
+            )])];
+            let error = resolve_roles_ids(&[role.to_string()], &enums).unwrap_err();
+            let message = error.to_string();
+            assert!(message.contains(role), "missing role reference in: {message}");
+            assert!(message.contains(&value.to_string()), "missing value in: {message}");
+        }
+    }
+
+    #[test]
+    fn resolve_roles_ids_rejects_duplicate_resolved_ids() {
+        let enums = vec![role_enum(vec![
+            EnumVariant::new("First", 7),
+            EnumVariant::new("AlsoFirst", 7),
+        ])];
+        for roles in [
+            vec!["EnumRole::First", "EnumRole::First"],
+            vec!["EnumRole::First", "EnumRole::AlsoFirst"],
+        ] {
+            let error =
+                resolve_roles_ids(&roles.into_iter().map(str::to_string).collect::<Vec<_>>(), &enums).unwrap_err();
+            assert!(error.to_string().contains("Duplicate role ID"));
+        }
+    }
+
+    #[test]
+    fn resolve_roles_ids_preserves_missing_enum_and_variant_errors() {
+        let enums = vec![role_enum(vec![EnumVariant::new("Known", 1)])];
+
+        let missing_enum = resolve_roles_ids(&["UnknownRole::Known".to_string()], &enums).unwrap_err();
+        assert!(missing_enum.to_string().contains("Role enum 'UnknownRole' not found"));
+
+        let missing_variant = resolve_roles_ids(&["EnumRole::Unknown".to_string()], &enums).unwrap_err();
+        assert!(
+            missing_variant
+                .to_string()
+                .contains("Role variant 'Unknown' not found in enum 'EnumRole'")
+        );
+    }
+
+    #[test]
+    fn resolve_roles_ids_rejects_ambiguous_enum_and_variant_names() {
+        let duplicated_enums = vec![
+            role_enum(vec![EnumVariant::new("Known", 1)]),
+            role_enum(vec![EnumVariant::new("Known", 2)]),
+        ];
+        let enum_error = resolve_roles_ids(&["EnumRole::Known".to_string()], &duplicated_enums).unwrap_err();
+        assert!(
+            enum_error
+                .to_string()
+                .contains("enum reference 'EnumRole' is ambiguous")
+        );
+
+        let duplicated_variants = vec![role_enum(vec![
+            EnumVariant::new("Known", 1),
+            EnumVariant::new("Known", 2),
+        ])];
+        let variant_error = resolve_roles_ids(&["EnumRole::Known".to_string()], &duplicated_variants).unwrap_err();
+        assert!(
+            variant_error
+                .to_string()
+                .contains("variant reference 'Known' is ambiguous")
+        );
+    }
+
+    #[test]
+    fn gen_model_rejects_invalid_roles_before_replacing_existing_output() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut data = test_data();
+        data.output_dir = temp.path().to_path_buf();
+        let role_enum_name = data.enums[0].to_rust_ref(false);
+        data.services[0].endpoints[0].schema.roles = vec![format!("{role_enum_name}::Missing")];
+        let model = data.output_dir.join("model.rs");
+        std::fs::write(&model, "previous model\n").unwrap();
+
+        let error = gen_model_rs(&data).unwrap_err();
+
+        assert!(error.to_string().contains("Role variant 'Missing' not found"));
+        assert_eq!(std::fs::read_to_string(model).unwrap(), "previous model\n");
+    }
+
     #[test]
     fn type_registry_dump_round_trips() {
         let data = test_data();
@@ -718,11 +868,10 @@ mod tests {
         assert!(code.contains("pub const TYPE_DEFINITIONS"));
         assert!(code.contains("pub fn type_registry()"));
 
-        // Extract the embedded JSON and round-trip it the way the generated
-        // type_registry() will at runtime.
-        let start = code.find("r#\"").unwrap() + 3;
-        let end = code.find("\"#").unwrap();
-        let types: Vec<Type> = serde_json::from_str(&code[start..end]).unwrap();
+        // Check the escaped literal and round-trip the serialized payload.
+        let serialized = serde_json::to_string_pretty(&shared_type_definitions(&data)).unwrap();
+        assert!(code.contains(&format!("pub const TYPE_DEFINITIONS: &'static str = {serialized:?};")));
+        let types: Vec<Type> = serde_json::from_str(&serialized).unwrap();
         // UserInfo struct + role enum + ErrorCode enum
         assert_eq!(types.len(), 3);
 
@@ -741,35 +890,70 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_number_from_error_code() {
-        let re = Regex::new(r"=\s*(\d+)").unwrap();
+    fn enum_decl_sorts_by_signed_discriminant() {
+        let e = Type::enum_(
+            "sample",
+            vec![
+                EnumVariant::new_with_description("High", "default = 0", 10),
+                EnumVariant::new("Near", -1),
+                EnumVariant::new("Low", 2),
+                EnumVariant::new("Far", -9),
+                EnumVariant::new("Tie", 2),
+            ],
+        );
+        let decl = e.to_rust_decl(false, false);
+        let declarations = decl
+            .lines()
+            .filter(|line| line.contains(" = ") && !line.trim_start().starts_with('#'))
+            .map(str::trim)
+            .collect::<Vec<_>>();
 
-        // Test with newline between number and comma
-        let text1 = r#"    ///
-      LoginStep2 = 10003
-  ,"#;
-        let caps1 = re.captures(text1).expect("Should match");
-        let number1: u64 = caps1[1].parse().expect("Should parse as u64");
-        assert_eq!(number1, 10003);
+        assert_eq!(
+            declarations,
+            ["Far = -9", "Near = -1", "Low = 2", "Tie = 2", "High = 10"]
+        );
+        assert!(decl.contains("#[doc = \"default = 0\"]"));
+    }
 
-        // Test with spaces but no newline
-        let text2 = "Authorize = 10000,";
-        let caps2 = re.captures(text2).expect("Should match");
-        let number2: u64 = caps2[1].parse().expect("Should parse as u64");
-        assert_eq!(number2, 10000);
+    #[test]
+    fn endpoint_error_docs_escape_text_and_omit_blank_messages() {
+        use endpoint_libs::model::{EndpointErrorCodeRef, EndpointErrorSchema};
 
-        // Test with no spaces
-        let text3 = "SomeError=12345,";
-        let caps3 = re.captures(text3).expect("Should match");
-        let number3: u64 = caps3[1].parse().expect("Should parse as u64");
-        assert_eq!(number3, 12345);
-
-        // Test with multiple spaces
-        let text4 = r#"/// SQL R0019 UnauthorizedMessage
-    UnauthorizedMessage = 45349677
-, "#;
-        let caps4 = re.captures(text4).expect("Should match");
-        let number4: u64 = caps4[1].parse().expect("Should parse as u64");
-        assert_eq!(number4, 45349677);
+        let message = "first line\nsecond \"quoted\" \\ path NAKED_ERROR_TOKEN";
+        let errors = vec![
+            EndpointErrorSchema::new("MultiLine", EndpointErrorCodeRef::new("BadRequest")).with_message(message),
+            EndpointErrorSchema::new("WithFields", EndpointErrorCodeRef::new("BadRequest"))
+                .with_message(message)
+                .with_fields(vec![Field::new("detail_code", Type::String)]),
+            EndpointErrorSchema::new("Empty", EndpointErrorCodeRef::new("BadRequest")).with_message(""),
+            EndpointErrorSchema::new("Whitespace", EndpointErrorCodeRef::new("BadRequest")).with_message(" \t\n "),
+        ];
+        let mut output = Vec::new();
+        gen_endpoint_error_enum("UserLogin", &errors, &mut output).unwrap();
+        let generated = String::from_utf8(output).unwrap();
+        let lines = generated.lines().map(str::trim).collect::<Vec<_>>();
+        let expected = format!("#[doc = {:?}]", message);
+        assert!(
+            lines
+                .windows(2)
+                .any(|pair| pair[0] == expected && pair[1] == "MultiLine,")
+        );
+        assert!(
+            lines
+                .windows(2)
+                .any(|pair| { pair[0] == expected && pair[1] == "WithFields { detail_code: String }," })
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|line| line.starts_with("second \"quoted\" \\ path NAKED_ERROR_TOKEN")),
+            "second-line error text escaped its attribute:\n{generated}"
+        );
+        assert_eq!(lines.iter().filter(|line| line.starts_with("#[doc =")).count(), 2);
+        assert!(generated.contains("with_message(\"first line\\nsecond \\\"quoted\\\" \\\\ path NAKED_ERROR_TOKEN\")"));
+        assert!(generated.contains("with_message(\" \\t\\n \")"));
+        assert!(generated.contains("EnumErrorCode::BadRequest"));
+        assert!(generated.contains("with_kind(\"MultiLine\")"));
+        assert!(generated.contains("with_details(serde_json::json!({ \"detailCode\": detail_code }))"));
     }
 }

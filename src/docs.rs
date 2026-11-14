@@ -105,6 +105,24 @@ pub fn gen_services_docs(docs: &Data) -> eyre::Result<()> {
     Ok(())
 }
 
+fn validate_output_component(value: &str, kind: &str) -> eyre::Result<()> {
+    if value.is_empty()
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+    {
+        eyre::bail!("invalid {kind}: expected ASCII letters, digits, underscore or hyphen");
+    }
+    Ok(())
+}
+
+pub fn validate_service_names(services: &[GenService]) -> eyre::Result<()> {
+    for service in services {
+        validate_output_component(&service.name, "service name")?;
+    }
+    Ok(())
+}
+
 fn error_code_enum(codes: &[ErrorCodeSchema]) -> Type {
     Type::enum_(
         "ErrorCode",
@@ -311,6 +329,7 @@ ID: {}
 /// from these schemas will report it via `tools/list`. Intended for review —
 /// schema changes show up as diffs in these files.
 pub fn gen_mcp_tools_json(data: &Data) -> eyre::Result<()> {
+    validate_service_names(&data.services)?;
     let docs_dir = data.project_root.join("docs");
     create_dir_all(&docs_dir)?;
 
@@ -357,7 +376,14 @@ pub fn gen_mcp_tools_json(data: &Data) -> eyre::Result<()> {
     Ok(())
 }
 
+/// Writes systemd units under `etc/systemd/`.
+///
+/// The application name, service names, and username must be nonempty and
+/// contain only ASCII letters, digits, underscores, or hyphens.
 pub fn gen_systemd_services(data: &Data, app_name: &str, user: &str) -> eyre::Result<()> {
+    validate_output_component(app_name, "application name")?;
+    validate_output_component(user, "systemd user")?;
+    validate_service_names(&data.services)?;
     create_dir_all(data.project_root.join("etc").join("systemd"))?;
 
     for srv in &data.services {
@@ -519,6 +545,36 @@ mod tests {
     use super::*;
     use crate::definitions::{EndpointSchemaElement, RustGenConfig};
     use endpoint_libs::model::{EnumVariant, Field};
+
+    #[test]
+    fn systemd_generator_rejects_invalid_user_before_writing() {
+        let dir = tempfile::tempdir().unwrap();
+        let data = Data {
+            project_name: "app".into(),
+            project_root: dir.path().to_path_buf(),
+            output_dir: dir.path().to_path_buf(),
+            services: vec![GenService::new("api".into(), 1, vec![])],
+            enums: vec![],
+            structs: vec![],
+            error_codes: vec![],
+        };
+        let invalid_user = "app-user\nextra";
+        let unit = dir.path().join("etc/systemd/app_api.service");
+
+        assert!(gen_systemd_services(&data, "app", invalid_user).is_err());
+        assert!(!dir.path().join("etc").exists());
+
+        gen_systemd_services(&data, "app", "app-user").unwrap();
+        let original = std::fs::read_to_string(&unit).unwrap();
+        assert!(
+            original
+                .lines()
+                .any(|line| line == "WorkingDirectory=/home/app-user/app")
+        );
+
+        assert!(gen_systemd_services(&data, "app", invalid_user).is_err());
+        assert_eq!(std::fs::read_to_string(&unit).unwrap(), original);
+    }
 
     #[test]
     fn services_json_stays_frontend_only_and_services_all_json_includes_every_endpoint() {
