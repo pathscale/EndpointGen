@@ -127,23 +127,22 @@ impl ToRust for EnumElement {
         self.validate_element()
             .unwrap_or_else(|_| panic!("EnumElement is invalid: {self:?}"));
 
-        let code_regex = regex::Regex::new(r"=\s*(\d+)").expect("Error building regex to extract endpoint code");
-
         match &self.inner {
             Type::Enum {
                 name: _,
                 variants: fields,
             } => {
-                let mut fields = fields
+                let fields = fields
                     .iter()
+                    .sorted_by_key(|variant| variant.value)
                     .map(|x| {
                         let variant_name = if x.name.chars().last().unwrap().is_lowercase() {
                             x.name.to_case(Case::Pascal)
                         } else {
                             x.name.clone()
                         };
-                        // A blank description must omit the `///` line entirely: an
-                        // empty doc comment trips clippy::empty_docs downstream.
+                        // A blank description must omit the doc attribute entirely:
+                        // an empty doc comment trips clippy::empty_docs downstream.
                         if x.description.trim().is_empty() {
                             format!(
                                 r#"
@@ -154,43 +153,14 @@ impl ToRust for EnumElement {
                         } else {
                             format!(
                                 r#"
-    /// {}
+    #[doc = {:?}]
     {} = {}
 "#,
                                 x.description, variant_name, x.value
                             )
                         }
                     })
-                    .sorted_by(|a, b| {
-                        // Sort by the endpoint code
-                        let code_a = {
-                            match code_regex.captures(a) {
-                                Some(code) => code[1].parse::<u64>().unwrap_or_else(|err| {
-                                    eprintln!("Sorting error: {err}: Rust output may not be sorted correctly");
-                                    0
-                                }),
-                                None => {
-                                    eprintln!("Sorting error: Rust output may not be sorted correctly");
-                                    0
-                                }
-                            }
-                        };
-
-                        let code_b = {
-                            match code_regex.captures(b) {
-                                Some(code) => code[1].parse::<u64>().unwrap_or_else(|err| {
-                                    eprintln!("Sorting error: {err}: Rust output may not be sorted correctly");
-                                    0
-                                }),
-                                None => {
-                                    eprintln!("Sorting error: Rust output may not be sorted correctly");
-                                    0
-                                }
-                            }
-                        };
-
-                        code_a.cmp(&code_b)
-                    });
+                    .collect::<Vec<_>>();
                 let enum_content = format!(r#"pub enum {} {{{}}}"#, self.to_rust_ref(serde_with), fields.join(","));
 
                 if add_derives {
@@ -482,12 +452,79 @@ mod tests {
             ),
         };
         let decl = element.to_rust_decl(false, false);
-        assert!(decl.contains("/// Has docs."));
+        assert!(decl.contains(r##"#[doc = "Has docs."]"##));
+        assert!(!decl.contains("///"));
+        assert_eq!(
+            decl.lines()
+                .filter(|line| line.trim_start().starts_with("#[doc ="))
+                .count(),
+            1
+        );
         assert!(
             !decl.lines().any(|l| l.trim() == "///"),
             "empty doc comment emitted (clippy::empty_docs):\n{decl}"
         );
         assert!(decl.contains("Bare = 1"));
         assert!(decl.contains("Blank = 2"));
+    }
+
+    #[test]
+    fn enum_element_decl_escapes_multiline_descriptions() {
+        let description = "first line\nsecond \"quoted\" \\ path NAKED_VARIANT_TOKEN";
+        let element = EnumElement {
+            config: RustGenConfig::default(),
+            inner: Type::enum_(
+                "sample",
+                vec![EnumVariant::new_with_description("Documented", description, 0)],
+            ),
+        };
+        let decl = element.to_rust_decl(false, false);
+        let lines = decl.lines().map(str::trim).collect::<Vec<_>>();
+        let expected = format!("#[doc = {:?}]", description);
+        assert!(
+            lines
+                .windows(2)
+                .any(|pair| pair[0] == expected && pair[1] == "Documented = 0"),
+            "escaped docs should immediately precede the variant:\n{decl}"
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|line| line.starts_with("second \"quoted\" \\ path NAKED_VARIANT_TOKEN")),
+            "second-line description text escaped its attribute:\n{decl}"
+        );
+    }
+
+    #[test]
+    fn enum_decl_sorts_by_signed_discriminant() {
+        let element = EnumElement {
+            config: RustGenConfig {
+                prefix_enum: true,
+                ..RustGenConfig::default()
+            },
+            inner: Type::enum_(
+                "sample",
+                vec![
+                    EnumVariant::new_with_description("High", "default = 0", 10),
+                    EnumVariant::new("Near", -1),
+                    EnumVariant::new("Low", 2),
+                    EnumVariant::new("Far", -9),
+                    EnumVariant::new("Tie", 2),
+                ],
+            ),
+        };
+        let decl = element.to_rust_decl(false, false);
+        let declarations = decl
+            .lines()
+            .filter(|line| line.contains(" = ") && !line.trim_start().starts_with('#'))
+            .map(str::trim)
+            .collect::<Vec<_>>();
+
+        assert!(decl.contains("pub enum EnumSample"));
+        assert_eq!(
+            declarations,
+            ["Far = -9", "Near = -1", "Low = 2", "Tie = 2", "High = 10"]
+        );
+        assert!(decl.contains(r##"#[doc = "default = 0"]"##));
     }
 }
