@@ -1,6 +1,23 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [1.16.0] - 2026-11-16
+
+### Features
+
+- Add `docs::validate_service_names`, `rust::prepare_model` and `rust::PreparedModel`
+
+### Changed
+
+- [**breaking**] `gen_model_rs` and `gen_systemd_services` now return errors where they used to warn or accept the input: unknown or duplicate roles, out-of-range role IDs, ambiguous enum names, and invalid service, app or user names
+- [**breaking**] Service names are now restricted to ASCII letters, digits, underscore and hyphen, because they become output file names. Names containing `.` or non-ASCII characters, which were accepted before, now fail generation
+- Generated enum variant docs use `#[doc = "..."]` instead of `///`
+- Generated enum variants are sorted by signed value
+- The schema and type-definition constants are emitted as escaped string literals
+- Drop the `regex` dependency
+- Replace the release scripts with a manual, master-only Publish workflow. The deps.rs badge in the README and this changelog are now updated by hand per release
+
 ## [1.15.0] - 2026-09-29
 
 ### Features
